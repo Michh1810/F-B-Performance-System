@@ -1,0 +1,30 @@
+# Go binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go modules
+vendor/
+
+# Air (Hot Reload) temporary files
+tmp/
+build-errors.log
+
+# Environment variables
+.env
+
+# MacOS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo

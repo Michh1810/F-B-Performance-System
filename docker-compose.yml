@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Go Backend Application
+  backend:
+    build: .
+    container_name: fbperformance-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgres://postgres:devpassword@postgres:5432/fbperformance?sslmode=disable
+    depends_on:
+      - postgres
+      - redis
+
+  # PostgreSQL Database Configuration
+  postgres:
+    image: postgres:16
+    container_name: fbperformance-postgres
+    environment:
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: fbperformance
+    ports:
+      - "5440:5432" # Mapped to 5440 to avoid local Mac conflicts
+    volumes:
+      - fbperformance-db-data:/var/lib/postgresql/data
+
+  # Redis Cache Configuration
+  redis:
+    image: redis:7
+    container_name: fbperformance-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  # This safely preserves your database data on your hard drive
+  fbperformance-db-data:
