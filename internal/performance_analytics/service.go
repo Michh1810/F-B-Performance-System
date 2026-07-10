@@ -2,7 +2,10 @@
 //  It calculates net profit (`revenue - cogs`), averages review ratings, and sorts the top items.
 package performance_analytics
 
-type Service struct{} // declare an empty structure that represents business tool
+type Service struct{ // declare an empty structure that represents business tool, when connect real data base, we must update this
+	//db *pgx.Pool
+	// redis *redis.Client
+} 
 
 func NewService() *Service {
 	return &Service{}
