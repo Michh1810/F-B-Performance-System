@@ -1,6 +1,7 @@
 // This is the brain of feature. It contains the actual raw Go logic, mathematical algorithms, calculations, and database coordination.
 //  It calculates net profit (`revenue - cogs`), averages review ratings, and sorts the top items.
 package performance_analytics
+import "time"
 
 type Service struct{} // declare an empty structure that represents business tool
 
@@ -20,9 +21,9 @@ func (s *Service) GetDashBoardData() SummaryDashboard{
 			StartDate: start,
 			EndDate: end,},
 			//  this is mock JSON Data
-			TotalRevenue: 14500.75
-			AverageRating: 4.65
-			AverageProfitMargin: 0.42
+			TotalRevenue: 14500.75,
+			AverageRating: 4.65,
+			AverageProfitMargin: 0.42,
 			TotalReviews: 129,
 		
 		}
