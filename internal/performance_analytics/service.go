@@ -3,7 +3,10 @@
 package performance_analytics
 import "time"
 
-type Service struct{} // declare an empty structure that represents business tool
+type Service struct{ // declare an empty structure that represents business tool, when connect real data base, we must update this
+	//db *pgx.Pool
+	// redis *redis.Client
+} 
 
 func NewService() *Service {
 	return &Service{}
