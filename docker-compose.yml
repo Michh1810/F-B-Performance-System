@@ -11,6 +11,13 @@ services:
       - .:/app
     environment:
       - DATABASE_URL=postgres://postgres:devpassword@postgres:5432/fbperformance?sslmode=disable
+      - CLOVER_BUSINESS_API_KEY_PRIVATE=${CLOVER_BUSINESS_API_KEY_PRIVATE}
+      - CLOVER_BUSINESS_API_KEY_PUBLIC=${CLOVER_BUSINESS_API_KEY_PUBLIC}
+      - CLOVER_BUSINESS_MID=${CLOVER_BUSINESS_MID}
+      - YELP_REVIEW_API_KEY=${YELP_REVIEW_API_KEY}
+      - GOOGLE_PLACEID_LAV_API_KEY=${GOOGLE_PLACEID_LAV_API_KEY}
+      - GOOGLE_MAP_DEMO_API_KEY=${GOOGLE_MAP_DEMO_API_KEY}
+
     depends_on:
       - postgres
       - redis
