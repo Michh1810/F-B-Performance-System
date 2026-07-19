@@ -22,4 +22,14 @@ CREATE TABLE reviews (
     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
     review_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+CREATE TABLE yelp_reviews (
+    review_id VARCHAR(22) PRIMARY KEY,
+    user_id VARCHAR(22),
+    business_id VARCHAR(255),
+    star SMALLINT NOT NULL CHECK (star >= 1 AND star <= 5),
+    review_date DATE NOT NULL
+    review_text TEXT
+);
+
 );

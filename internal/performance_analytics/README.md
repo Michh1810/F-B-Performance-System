@@ -6,6 +6,12 @@ All endpoints accept a shared date range filter as query params:
 If omitted, the backend defaults to the last 30 days.
 
 ---
+## Note
+Right now: Next.js (Frontend) -> Go Backend -> Google API -> Go Backend -> Next.js (Frontend) we didn't use database yet.
+
+
+
+
 
 ## 1. GET /api/v1/dashboard/summary (IN-CHARGE: NGU TRUONG)
 
@@ -119,3 +125,21 @@ Separated from `summary` because review data is heavier (text, sentiment) and no
 - **Four endpoints, not one.** Each dashboard widget fetches independently, matching the ETL plan's "pre-calculate then serve from Redis" pattern. If `menu-items` gets slow to compute, it doesn't block `summary` from rendering.
 - **`performanceCategory` is derived, not stored.** Compute it in `service.go` at request time (or during the nightly aggregation job) by comparing each item's `popularityIndex` and `contributionMargin` against the menu-wide averages in `summary`. Don't hardcode it in Postgres, the averages shift every time new sales data lands.
 - **Naming discipline going forward:** any field two different concepts might both want to call `category`, `status`, or `score` deserves a specific name up front. Cheap to fix now, expensive once the frontend is wired to it.
+
+---
+
+## 5. Yelp Dataset Ingestion (Seeder)
+
+Because the Yelp Academic Review dataset is massive (5.3GB JSON file), a dedicated seeder script (`cmd/seeder/main.go`) is used to efficiently parse and ingest the data into the PostgreSQL database.
+
+**Key Parsing Details:**
+- **Streaming Parser:** The file is not loaded entirely into memory. Instead, the script uses a `bufio.Scanner` to read the file line-by-line, taking advantage of its JSON Lines format.
+- **Custom Buffer Size:** A custom 10MB buffer is configured for the scanner to safely accommodate any unusually long text reviews.
+- **Batch Processing:** To ensure fast ingestion, reviews are inserted into the database using optimized transaction batches (committing 10,000 records at a time) rather than executing individual, autocommitted inserts.
+- **Memory Management:** To maintain a low and stable memory footprint over the long-running process, `runtime.GC()` is explicitly triggered after every batch commit.
+
+**Running the Seeder:**
+The seeder must be run from the project root and requires a `DATABASE_URL` environment variable. For the local docker-compose environment:
+```bash
+DATABASE_URL="postgres://postgres:devpassword@localhost:5440/fbperformance?sslmode=disable" go run cmd/seeder/main.go
+```
