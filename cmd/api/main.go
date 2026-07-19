@@ -38,6 +38,7 @@ func main() {
 	})
 	mux.HandleFunc("/api/v1/dashboard/summary", handler.HandleSummary)
 	mux.HandleFunc("/api/v1/dashboard/menu-items", handler.HandleMenuItems)
+	mux.HandleFunc("/api/reviews", handler.ServeGoogleReviewHTTP)
 
 	log.Println("Server is running on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", mux))

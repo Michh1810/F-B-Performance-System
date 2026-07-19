@@ -2,6 +2,10 @@ package performance_analytics
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
 	"time"
 )
 
@@ -118,6 +122,31 @@ func classifyPerformance(popularity, contributionMargin, avgPopularity, avgMargi
 	default:
 		return "dog"
 	}
+}
+
+// handle GOOGLEPLACE reviews data request
+func (s *Service) GetGoogleReviews() (*GooglePlaceAPIResponse, error) {
+	apiKey := os.Getenv("GOOGLE_MAP_DEMO_API_KEY")
+	placeID := os.Getenv("GOOGLE_PLACEID_LAV_API_KEY")
+	fullURL := fmt.Sprintf("https://places.googleapis.com/v1/places/%s", placeID)
+	req, _ := http.NewRequest("GET", fullURL, nil)
+	req.Header.Add("X-Goog-Api-Key", apiKey)
+	req.Header.Add("X-Goog-FieldMask", "id,displayName,rating,userRatingCount,reviews,reviewSummary")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	//Decode JSON into created struct in types.go
+	var data GooglePlaceAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+	// return the structured GO data
+	return &data, nil
 }
 
 func formatDate(t time.Time) string {

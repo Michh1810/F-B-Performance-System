@@ -30,3 +30,43 @@ type MenuItemsResponse struct {
 	DateRange DateRangeConfig `json:"dateRange"`
 	Items     []MenuItem      `json:"items"`
 }
+
+// Struct for Google Review JSON
+type DisplayName struct {
+	Text         string `json:"text"`
+	LanguageCode string `json:"languageCode"`
+}
+
+type LocalizedText struct {
+	Text         string `json:"text"`
+	LanguageCode string `json:"languageCode"`
+}
+
+type AuthorAttribution struct {
+	DisplayName string `json:"displayName"`
+	Uri         string `json:"uri"`
+	PhotoUri    string `json:"photoUri"`
+}
+
+type GoogleReview struct {
+	Name                           string            `json:"name"`
+	RelativePublishTimeDescription string            `json:"relativePublishTimeDescription"`
+	Rating                         float64           `json:"rating"`
+	Text                           LocalizedText     `json:"text"`
+	OriginalText                   LocalizedText     `json:"originalText"`
+	AuthorAttribution              AuthorAttribution `json:"authorAttribution"`
+	PublishTime                    string            `json:"publishTime"`
+}
+type ReviewSummary struct {
+	Text LocalizedText `json:"text"`
+}
+
+// Parent object for Google reviews
+type GooglePlaceAPIResponse struct {
+	ID              string         `json:"id"`
+	DisplayName     DisplayName    `json:"displayName"`
+	Rating          float64        `json:"rating"`
+	UserRatingCount int            `json:"userRatingCount"`
+	Reviews         []GoogleReview `json:"reviews"`
+	ReviewSummary   ReviewSummary  `json:"reviewSummary"`
+}

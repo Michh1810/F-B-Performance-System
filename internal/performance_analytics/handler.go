@@ -110,3 +110,14 @@ func parseDateRange(r *http.Request) (time.Time, time.Time, error) {
 
 	return from.UTC(), endExclusive.UTC(), nil
 }
+
+func (h *Handler) ServeGoogleReviewHTTP(w http.ResponseWriter, r *http.Request) {
+	data, err := h.s.GetGoogleReviews()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(data)
+}

@@ -2,7 +2,10 @@ module fbperformance
 
 go 1.23.0
 
-require github.com/jackc/pgx/v5 v5.7.6
+require (
+	github.com/jackc/pgx/v5 v5.7.6
+	github.com/lib/pq v1.12.3
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
