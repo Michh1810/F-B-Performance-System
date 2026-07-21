@@ -58,13 +58,13 @@ func main() {
 			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (review_id) DO NOTHING;
 		`, review.ReviewID, review.UserID, review.BusinessID, int(review.Stars), review.Date, review.Text)
-		
+
 		if err != nil {
 			log.Println("Failed to insert review:", err)
 		}
 
 		count++
-		
+
 		if count%500 == 0 {
 			fmt.Printf("Inserted %d reviews...\n", count)
 		}
@@ -73,7 +73,7 @@ func main() {
 			break
 		}
 	}
-	
+
 	// Commit any remaining reviews
 	if err := tx.Commit(); err != nil {
 		log.Println("Final commit failed:", err)
