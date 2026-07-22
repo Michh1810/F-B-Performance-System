@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -10,10 +11,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 
+	"fbperformance/internal/agents/financial"
+	"fbperformance/internal/agents/manager"
+	"fbperformance/internal/agents/orchestrator"
+	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/config"
-	"fbperformance/internal/gemini"
-	"fbperformance/internal/multiagent_recommendation"
+	"fbperformance/internal/handlers"
 	"fbperformance/internal/performance_analytics"
+	"fbperformance/internal/services/llm"
+	"fbperformance/internal/store"
 )
 
 func main() {
@@ -23,9 +29,20 @@ func main() {
 
 	cfg := config.Load()
 
-	geminiClient := gemini.NewClient(cfg.GeminiAPIKey)
-	recommendationService := multiagent_recommendation.NewService(geminiClient, cfg.GeminiModel)
-	recommendationHandler := multiagent_recommendation.NewHandler(recommendationService)
+	pool, err := store.Connect(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("connect database: %v", err)
+	}
+	defer pool.Close()
+	snapshotStore := store.NewTrendSnapshotStore(pool)
+	signalStore := store.NewTrendSignalStore(pool)
+
+	llmClient := llm.NewClient(cfg.GeminiAPIKey)
+	trendAgent := trend.NewAgent(llmClient, llmClient, signalStore, snapshotStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
+	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel)
+	managerAgent := manager.NewAgent(llmClient, cfg.GeminiModel)
+	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
+	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
 
 	analyticsService := performance_analytics.NewService()
 	analyticsHandler := performance_analytics.NewHandler(analyticsService)
