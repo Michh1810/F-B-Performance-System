@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -184,4 +185,48 @@ func topItemsOrderBy(sortBy string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid sortBy %q", sortBy)
 	}
+}
+
+func (r *Repository) SaveGoogleReviews(ctx context.Context, reviews []GoogleReview) error {
+	const query = `
+		INSERT INTO google_reviews (
+			review_id, source, star, author_name, review_count, review_date, review_text
+		) VALUES (
+			$1, 'google', $2, $3, $4, $5, $6
+		) ON CONFLICT (review_id) DO NOTHING
+	`
+
+	// Note: We use pgx.Batch to insert all reviews efficiently in one round trip.
+	batch := &pgx.Batch{}
+	for _, rev := range reviews {
+		// Google review name looks like "places/PLACE_ID/reviews/REVIEW_ID"
+		// We'll pass the full name, but keep in mind that the db schema has VARCHAR(22).
+		// If Google review IDs are longer than 22 characters, PostgreSQL will return an error
+		// and you might need to run an ALTER TABLE to increase the length.
+		reviewID := rev.Name
+
+		// If it has a prefix "places/.../reviews/", we can extract just the ID part
+		// but typically it's still >22 chars. Let's just use the last 22 characters to ensure it fits the table constraint for now.
+		if len(reviewID) > 22 {
+			reviewID = reviewID[len(reviewID)-22:]
+		}
+
+		batch.Queue(query,
+			reviewID,
+			int(rev.Rating),
+			rev.AuthorAttribution.DisplayName,
+			0, // Google API doesn't return author's total review_count, so defaulting to 0
+			rev.PublishTime,
+			rev.Text.Text,
+		)
+	}
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	if _, err := br.Exec(); err != nil {
+		return err
+	}
+
+	return nil
 }
