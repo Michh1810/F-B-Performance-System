@@ -25,8 +25,8 @@ func (s *Service) GetDashboardData(ctx context.Context, from, to time.Time) (Sum
 
 	return SummaryDashboard{
 		DateRange: DateRangeConfig{
-			From: formatDate(from),
-			To:   formatDate(to.Add(-time.Nanosecond)),
+			StartDate: from,
+			EndDate:   to.Add(-time.Nanosecond),
 		},
 		TotalRevenue:        summary.totalRevenue,
 		AverageRating:       summary.averageRating,
@@ -61,8 +61,8 @@ func (s *Service) GetMenuItems(
 	items := buildMenuItems(rows, totalUnits, performanceCategory)
 	return MenuItemsResponse{
 		DateRange: DateRangeConfig{
-			From: formatDate(from),
-			To:   formatDate(to.Add(-time.Nanosecond)),
+			StartDate: from,
+			EndDate:   to.Add(-time.Nanosecond),
 		},
 		Items: items,
 	}, nil
@@ -145,10 +145,65 @@ func (s *Service) GetGoogleReviews() (*GooglePlaceAPIResponse, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, err
 	}
+
+	// Save the reviews into the database
+	if len(data.Reviews) > 0 {
+		// We use context.Background() since this method doesn't take a context parameter
+		err = s.repo.SaveGoogleReviews(context.Background(), data.Reviews)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save reviews to db: %w", err)
+		}
+	}
+
 	// return the structured GO data
 	return &data, nil
 }
 
+// Handle Clover Daily Data Request
+func (s *Service) GetCloverOrders() (*CloverOrderResponse, error) {
+	merchantID := os.Getenv("CLOVER_MERCHANT_MID")
+	apiToken := os.Getenv("CLOVER_DEV_API_KEY")
+	baseURL := "https://apisandbox.dev.clover.com/v3/merchants/"
+
+	// 1. Calculate midnight of today in milliseconds
+	now := time.Now()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	midnightMs := midnight.UnixNano() / int64(time.Millisecond)
+
+	// 2. Build the URL (similar to the curl command!)
+	fullURL := fmt.Sprintf("%s%s/orders?filter=createdTime>=%d&expand=lineItems,totals&limit=100", baseURL, merchantID, midnightMs)
+
+	// 3. Create the HTTP request
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add your headers
+	req.Header.Add("Authorization", "Bearer "+apiToken)
+	req.Header.Add("accept", "application/json")
+
+	// 4. Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() // Don't forget to close the body!
+
+	// Check for a bad status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("clover API returned error status: %d", resp.StatusCode)
+	}
+
+	// 5. Decode the JSON response directly into your new structs!
+	var data CloverOrderResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+
+	return &data, nil
+}
 func formatDate(t time.Time) string {
 	return t.Format("2006-01-02")
 }

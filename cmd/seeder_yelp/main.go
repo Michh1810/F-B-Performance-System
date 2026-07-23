@@ -54,13 +54,13 @@ func main() {
 		}
 
 		_, err = tx.Exec(`
-			INSERT INTO yelp_reviews (review_id, user_id, business_id, stars, review_date, review_text)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO yelp_reviews (review_id, source, user_id, business_id, star, review_date, review_text)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (review_id) DO NOTHING;
-		`, review.ReviewID, review.UserID, review.BusinessID, int(review.Stars), review.Date, review.Text)
+		`, review.ReviewID, "yelp", review.UserID, review.BusinessID, int(review.Stars), review.Date, review.Text)
 
 		if err != nil {
-			log.Println("Failed to insert review:", err)
+			log.Fatalf("Failed to insert review (ID: %s): %v", review.ReviewID, err)
 		}
 
 		count++

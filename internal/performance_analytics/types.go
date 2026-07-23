@@ -63,6 +63,35 @@ type GooglePlaceAPIResponse struct {
 
 //  Start: Struct for YelpReview JSON
 
+// Start: Struct for Clover JSON
+// struct for every receipt sold, including many items per ticket
+
+type CloverLineItem struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Item  struct {
+		ID string `json:"id"`
+	} `json:"item"`
+}
+
+type CloverOrder struct {
+	ID        string `json:"id"`
+	Total     int    `json:"total"`
+	LineItems struct {
+		Elements []CloverLineItem `json:"elements"`
+	} `json:"lineItems"`
+	PaymentState string `json:"paymentState"`
+	State        string `json:"state"`
+	CreatedTime  int64  `json:"createdTime"`
+}
+
+type CloverOrderResponse struct {
+	Elements []CloverOrder `json:"elements"`
+}
+
+//  End: Struct for Google Review JSON
+
 // HÙNG PART
 type MenuItem struct {
 	ID                  string  `json:"id"`

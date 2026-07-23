@@ -111,6 +111,7 @@ func parseDateRange(r *http.Request) (time.Time, time.Time, error) {
 	return from.UTC(), endExclusive.UTC(), nil
 }
 
+// Serve Google Reviews
 func (h *Handler) ServeGoogleReviewHTTP(w http.ResponseWriter, r *http.Request) {
 	data, err := h.s.GetGoogleReviews()
 	if err != nil {
@@ -119,5 +120,23 @@ func (h *Handler) ServeGoogleReviewHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(data)
+}
+
+// Serve Clover Data Request
+func (h *Handler) ServeCloverOrdersHTTP(w http.ResponseWriter, r *http.Request) {
+	// 1. Call the service function we just built
+	data, err := h.s.GetCloverOrders()
+	if err != nil {
+		// If Clover API fails, return a 500 server error
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Set the content type so the frontend knows it's receiving JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// 3. Send the JSON back to the client!
 	json.NewEncoder(w).Encode(data)
 }
