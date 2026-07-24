@@ -17,7 +17,7 @@ services:
 
   # PostgreSQL Database Configuration
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: fbperformance-postgres
     environment:
       POSTGRES_PASSWORD: devpassword
