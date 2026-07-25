@@ -94,7 +94,6 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	r.Handle("/api/recommendations", recommendationHandler)
 	r.Get("/api/analytics", analyticsHandler.HandleSummary)
 
 	r.Route("/api", func(r chi.Router) {
