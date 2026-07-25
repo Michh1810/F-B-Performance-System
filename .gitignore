@@ -28,3 +28,6 @@ Icon
 .vscode/
 *.swp
 *.swo
+
+# yelp sample data
+yelp_academic_dataset_review.json

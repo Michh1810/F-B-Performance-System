@@ -1,0 +1,1 @@
+{"error": {"code": "VALIDATION_ERROR", "description": "'Bearer la-v-vietnamese-fusion-st-petersburg' does not match '(?i)^Bearer [A-Za-z0-9\\\\-\\\\_]{128}$'", "field": "Authorization", "instance": "Bearer la-v-vietnamese-fusion-st-petersburg"}}

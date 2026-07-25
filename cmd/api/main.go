@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/joho/godotenv"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 
 	"fbperformance/internal/agents/financial"
 	"fbperformance/internal/agents/manager"
@@ -65,8 +66,17 @@ func main() {
 	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
 	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
 
-	analyticsService := performance_analytics.NewService()
+	repo := performance_analytics.NewRepository(pool)
+	analyticsService := performance_analytics.NewService(repo)
 	analyticsHandler := performance_analytics.NewHandler(analyticsService)
+
+	port := cfg.Port
+	if port == "" {
+		port = os.Getenv("PORT")
+	}
+	if port == "" {
+		port = "8080"
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -79,18 +89,26 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 
 	r.Handle("/api/recommendations", recommendationHandler)
-	r.Handle("/api/analytics", analyticsHandler)
+	r.Get("/api/analytics", analyticsHandler.HandleSummary)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Handle("/performance-analytics", analyticsHandler)
 		r.Handle("/forecast", forecastingHandler)
 		r.Route("/ai", func(r chi.Router) {
 			r.Handle("/recommendation", recommendationHandler)
 		})
+
+		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
+		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
+		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
+		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})
 
-	log.Printf("listening on :%s", cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
+	log.Printf("listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }
