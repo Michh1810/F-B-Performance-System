@@ -2,86 +2,112 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
-	"fbperformance/internal/performance_analytics"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/robfig/cron/v3"
+	"fbperformance/internal/agents/financial"
+	"fbperformance/internal/agents/manager"
+	"fbperformance/internal/agents/orchestrator"
+	"fbperformance/internal/agents/trend"
+	"fbperformance/internal/ai"
+	"fbperformance/internal/config"
+	"fbperformance/internal/demand_forecast"
+	"fbperformance/internal/handlers"
+	"fbperformance/internal/performance_analytics"
+	"fbperformance/internal/services/llm"
+	"fbperformance/internal/store"
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	_ = godotenv.Load()
 
-	databaseURL := os.Getenv("DATABASE_URL")
+	cfg := config.Load()
+
+	databaseURL := cfg.DatabaseURL
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
+		databaseURL = "postgres://postgres:devpassword@localhost:5440/fbperformance?sslmode=disable"
 	}
 
-	db, err := pgxpool.New(ctx, databaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		log.Fatalf("failed to open database: %v", err)
 	}
 	defer db.Close()
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
 
-	repo := performance_analytics.NewRepository(db)
-	service := performance_analytics.NewService(repo)
-	handler := performance_analytics.NewHandler(service)
+	pool, err := store.Connect(context.Background(), databaseURL)
+	if err != nil {
+		log.Fatalf("connect database: %v", err)
+	}
+	defer pool.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	snapshotStore := store.NewTrendSnapshotStore(pool)
+	signalStore := store.NewTrendSignalStore(pool)
+
+	aiClient := ai.NewClientFromEnv()
+	forecastingService := demand_forecast.NewServiceWithDB(db, aiClient)
+	forecastingHandler := demand_forecast.NewHandler(forecastingService)
+
+	llmClient := llm.NewClient(cfg.GeminiAPIKey)
+	trendAgent := trend.NewAgent(llmClient, llmClient, signalStore, snapshotStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
+	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel)
+	managerAgent := manager.NewAgent(llmClient, cfg.GeminiModel)
+	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
+	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
+
+	repo := performance_analytics.NewRepository(pool)
+	analyticsService := performance_analytics.NewService(repo)
+	analyticsHandler := performance_analytics.NewHandler(analyticsService)
+
+	port := cfg.Port
+	if port == "" {
+		port = os.Getenv("PORT")
+	}
+	if port == "" {
+		port = "8080"
+	}
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("/api/v1/dashboard/summary", handler.HandleSummary)
-	mux.HandleFunc("/api/v1/dashboard/menu-items", handler.HandleMenuItems)
-	mux.HandleFunc("/api/reviews", handler.ServeGoogleReviewHTTP)
-	mux.HandleFunc("/api/clover", handler.ServeCloverOrdersHTTP)
 
-	// --- CRON JOB SETUP ---
-	c := cron.New()
+	r.Get("/api/analytics", analyticsHandler.HandleSummary)
 
-	// Schedule to run clover_daily_seeder.go every day at 9:00 AM to populate the data for dashboard
-	_, err = c.AddFunc("0 9 * * *", func() {
-		log.Println("CRON: Running daily Clover seeder...")
-		performance_analytics.SeedDailyCloverData()
+	r.Route("/api", func(r chi.Router) {
+		r.Handle("/forecast", forecastingHandler)
+		r.Route("/ai", func(r chi.Router) {
+			r.Handle("/recommendation", recommendationHandler)
+		})
+
+		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
+		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
+		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
+		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})
-	if err != nil {
-		log.Printf("Failed to schedule cron job: %v", err)
-	} else {
-		c.Start()
-		defer c.Stop()
-		log.Println("CRON: Scheduled daily Clover seeder at 9:00 AM")
-	}
-	// Schedule to extract reviews from Google Reviews at 9:00 AM daily
-	_, err = c.AddFunc("0 9 * * *", func() {
-		log.Println("CRON: Extracting daily Google reviews...")
-		result, err := service.GetGoogleReviews()
-		if err != nil {
-			log.Printf("Failed to extract Google reviews: %v", err)
-		}
-		log.Printf("Extracted %d Google reviews", len(result.Reviews))
-	})
-	if err != nil {
-		log.Printf("Failed to schedule cron job: %v", err)
-	} else {
-		c.Start()
-		defer c.Stop()
-		log.Println("CRON: Scheduled daily Google reviews at 9:00 AM")
-	}
-	// Test running google connection
-	log.Println("TEST: Running GetGoogleReviews once on startup...")
-	testResult, testErr := service.GetGoogleReviews()
-	if testErr != nil {
-		log.Printf("TEST Failed: %v", testErr)
-	} else {
-		log.Printf("TEST Success: Extracted %d Google reviews", len(testResult.Reviews))
-	}
-	// ----------------------
-	log.Println("Server is running on port 8080...")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+
+	log.Printf("listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }
