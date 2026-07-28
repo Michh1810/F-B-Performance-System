@@ -155,17 +155,16 @@ func (s *Service) GetGoogleReviews() (*GooglePlaceAPIResponse, error) {
 	return &data, nil
 }
 
-// GetCloverOrders pulls today's Clover orders from Clover's API.
-func (s *Service) GetCloverOrders() (*CloverOrderResponse, error) {
+// GetCloverOrders pulls Clover orders from Clover's API for a date range.
+func (s *Service) GetCloverOrders(from, to time.Time) (*CloverOrderResponse, error) {
 	merchantID := os.Getenv("CLOVER_MERCHANT_MID")
 	apiToken := os.Getenv("CLOVER_DEV_API_KEY")
 	baseURL := "https://apisandbox.dev.clover.com/v3/merchants/"
 
-	now := time.Now()
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	midnightMs := midnight.UnixNano() / int64(time.Millisecond)
+	fromMs := from.UnixMilli()
+	toMs := to.UnixMilli()
 
-	fullURL := fmt.Sprintf("%s%s/orders?filter=createdTime>=%d&expand=lineItems,totals&limit=100", baseURL, merchantID, midnightMs)
+	fullURL := fmt.Sprintf("%s%s/orders?filter=createdTime>=%d&filter=createdTime<=%d&expand=lineItems,totals&limit=100", baseURL, merchantID, fromMs, toMs)
 
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
@@ -192,4 +191,138 @@ func (s *Service) GetCloverOrders() (*CloverOrderResponse, error) {
 	}
 
 	return &data, nil
+}
+
+// CalculateRevenueByClass computes the total revenue for each order type (Dine-in, Takeout, etc.)
+func CalculateRevenueByClass(cloverData *CloverOrderResponse) map[string]float64 {
+	// 1. Create a map to hold our running totals
+	revenueByClassMap := make(map[string]float64)
+
+	if cloverData == nil {
+		return revenueByClassMap
+	}
+
+	// 2. Loop through every order pulled from Clover
+	for _, order := range cloverData.Elements {
+
+		// Safety check: Skip orders that weren't paid for
+		if order.PaymentState != "PAID" {
+			continue
+		}
+
+		className := order.OrderType.Name
+
+		// Fallback if the order type is missing
+		if className == "" {
+			className = "Uncategorized"
+		}
+
+		// Clover totals are in cents (e.g., 6500 = $65.00).
+		// We convert it to a float64 dollar amount for the frontend.
+		dollarAmount := float64(order.Total) / 100.0
+
+		// Add the money to the correct bucket
+		revenueByClassMap[className] += dollarAmount
+	}
+
+	return revenueByClassMap
+}
+
+// GetPerformanceDashboard orchestrates Clover and Postgres data for the dashboard
+func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Time) (*PerformanceDashboardResponse, error) {
+	// 1. Fetch Clover Data
+	cloverData, err := s.GetCloverOrders(from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get clover orders: %w", err)
+	}
+
+	// 2. Calculate Revenue Classes
+	revenueByClassMap := CalculateRevenueByClass(cloverData)
+	var revenueClasses []RevenueClassData
+	for class, revenue := range revenueByClassMap {
+		revenueClasses = append(revenueClasses, RevenueClassData{
+			Channel: class,
+			Revenue: revenue,
+		})
+	}
+
+	// 3. Calculate Macro KPIs from Clover Data
+	var netSales float64
+	var orderCount int
+	if cloverData != nil {
+		for _, order := range cloverData.Elements {
+			if order.PaymentState == "PAID" {
+				netSales += float64(order.Total) / 100.0
+				orderCount++
+			}
+		}
+	}
+	
+	var avgTicketSize float64
+	if orderCount > 0 {
+		avgTicketSize = netSales / float64(orderCount)
+	}
+
+	// 4. Fetch Top Items from Repo (for Master Table and Category Dominance)
+	window := to.Sub(from)
+	previousTo := from
+	previousFrom := previousTo.Add(-window)
+
+	rows, err := s.repo.GetTopItems(ctx, from, to, previousFrom, previousTo, "revenue", 50)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top items: %w", err)
+	}
+
+	// 5. Calculate Category Dominance
+	categoryRevenueMap := make(map[string]float64)
+	var topCategory string
+	var maxCatRevenue float64
+	totalDBRevenue := 0.0
+	for _, row := range rows {
+		categoryRevenueMap[row.MenuCategory] += row.Revenue
+		totalDBRevenue += row.Revenue
+		if categoryRevenueMap[row.MenuCategory] > maxCatRevenue {
+			maxCatRevenue = categoryRevenueMap[row.MenuCategory]
+			topCategory = row.MenuCategory
+		}
+	}
+
+	var categoryDominancePercentage float64
+	if totalDBRevenue > 0 {
+		categoryDominancePercentage = (maxCatRevenue / totalDBRevenue) * 100
+	}
+
+	// 6. Build Master Table
+	var masterTable []MasterTableItem
+	for _, row := range rows {
+		price := 0.0
+		if row.UnitsSold > 0 {
+			price = row.Revenue / float64(row.UnitsSold)
+		}
+		masterTable = append(masterTable, MasterTableItem{
+			ID:            row.ID,
+			Name:          row.Name,
+			Category:      row.MenuCategory,
+			Price:         price,
+			UnitsSold:     row.UnitsSold,
+			NetRevenue:    row.Revenue,
+			GuestMentions: 0, // Mock for now
+			SaleTrend:     row.TrendPercent,
+		})
+	}
+
+	// Return the aggregated data
+	return &PerformanceDashboardResponse{
+		KPIs: MacroKPIs{
+			NetSales: netSales,
+			OrderTraffic: KPIMetric{Value: float64(orderCount), Trend: 0},
+			AverageTicketSize: KPIMetric{Value: avgTicketSize, Trend: 0},
+			CategoryDominance: CategoryDominance{
+				CategoryName: topCategory,
+				Percentage:   categoryDominancePercentage,
+			},
+		},
+		RevenueClasses: revenueClasses,
+		MasterTable:    masterTable,
+	}, nil
 }

@@ -104,6 +104,7 @@ func main() {
 
 		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
 		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
+		r.Get("/v1/performance-dashboard", analyticsHandler.HandlePerformanceDashboard)
 		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
 		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})
