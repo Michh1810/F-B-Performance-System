@@ -95,7 +95,7 @@ func (s *MenuIdeaStore) List(ctx context.Context, status string) ([]menuidea.Sto
 	}
 	defer rows.Close()
 
-	var ideas []menuidea.StoredIdea
+	ideas := []menuidea.StoredIdea{}
 	for rows.Next() {
 		var idea menuidea.StoredIdea
 		var hashtags []byte

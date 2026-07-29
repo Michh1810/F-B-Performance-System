@@ -11,12 +11,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 
 	"fbperformance/internal/agents/financial"
 	"fbperformance/internal/agents/hashtagsuggest"
 	"fbperformance/internal/agents/manager"
+	"fbperformance/internal/agents/menuidea"
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/ai"
@@ -68,7 +70,9 @@ func main() {
 	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
 
 	ideaStore := store.NewMenuIdeaStore(pool)
-	ideasHandler := handlers.NewIdeasHandler(ideaStore)
+	menuIdeaCallLogStore := store.NewMenuIdeaCallLogStore(pool)
+	menuIdeaAgent := menuidea.NewAgent(llmClient, llmClient, signalStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
+	ideasHandler := handlers.NewIdeasHandler(ideaStore, menuItemStore, menuIdeaAgent, menuIdeaCallLogStore)
 
 	restaurantProfileStore := store.NewRestaurantProfileStore(pool)
 	restaurantProfileHandler := handlers.NewRestaurantProfileHandler(restaurantProfileStore)
@@ -76,6 +80,8 @@ func main() {
 	hashtagSuggestionStore := store.NewTrendHashtagSuggestionStore(pool)
 	hashtagSuggestAgent := hashtagsuggest.NewAgent(llmClient, cfg.GeminiModel)
 	trendHashtagsHandler := handlers.NewTrendHashtagsHandler(restaurantProfileStore, menuItemStore, hashtagSuggestAgent, hashtagSuggestionStore)
+
+	menuItemsHandler := handlers.NewMenuItemsHandler(menuItemStore)
 
 	repo := performance_analytics.NewRepository(pool)
 	analyticsService := performance_analytics.NewService(repo)
@@ -95,6 +101,13 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   cfg.CORSAllowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -113,8 +126,13 @@ func main() {
 			r.Handle("/recommendation", recommendationHandler)
 			r.Route("/ideas", func(r chi.Router) {
 				r.Get("/", ideasHandler.List)
+				r.Post("/run", ideasHandler.Run)
 				r.Patch("/{id}", ideasHandler.UpdateStatus)
 			})
+		})
+
+		r.Route("/menu-items", func(r chi.Router) {
+			r.Get("/active", menuItemsHandler.ListActive)
 		})
 
 		r.Route("/restaurant-profile", func(r chi.Router) {

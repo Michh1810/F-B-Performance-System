@@ -51,50 +51,100 @@ type seedGroup struct {
 
 var seedGroups = []seedGroup{
 	{
-		menuItemName: "Spicy Chicken Sandwich",
+		menuItemName: "Bulgogi Bowl",
 		signals: []mockSignal{
-			{caption: "nashville hot chicken ramen bowl is the new mashup everyone's making", hashtags: []string{"foodtiktok", "nashvillehot", "ramen"}, viewCount: 820000, likeCount: 94000, commentCount: 2100, shareCount: 15000},
-			{caption: "spicy chicken sando with a waffle bun instead of brioche, obsessed", hashtags: []string{"chickensando", "waffles", "foodtrends"}, viewCount: 410000, likeCount: 51000, commentCount: 1300, shareCount: 6200},
+			{caption: "korean bbq bowls with a fried egg on top are everywhere on foodtok right now", hashtags: []string{"koreanbbq", "ricebowl", "foodtiktok"}, viewCount: 820000, likeCount: 94000, commentCount: 2100, shareCount: 15000},
+			{caption: "gochujang glazed beef bowls layered over rice, the sauce drip shots are unreal", hashtags: []string{"gochujang", "beefbowl", "foodtrends"}, viewCount: 410000, likeCount: 51000, commentCount: 1300, shareCount: 6200},
 		},
 	},
 	{
-		menuItemName: "Salted Egg Coffee",
+		menuItemName: "Kimchi Fried Rice",
 		signals: []mockSignal{
-			{caption: "salted egg yolk croissant filling is blowing up right now", hashtags: []string{"saltedegg", "croissant", "foodtiktok"}, viewCount: 610000, likeCount: 72000, commentCount: 1800, shareCount: 9000},
-			{caption: "salted caramel cold brew layered with cream foam trend", hashtags: []string{"coffeetiktok", "saltedcaramel", "coldbrew"}, viewCount: 340000, likeCount: 39000, commentCount: 900, shareCount: 4100},
+			{caption: "kimchi fried rice topped with a crispy fried egg and nori strips trending hard", hashtags: []string{"kimchi", "friedrice", "foodtiktok"}, viewCount: 610000, likeCount: 72000, commentCount: 1800, shareCount: 9000},
+			{caption: "spam and kimchi rice bowls with a soy butter drizzle blowing up", hashtags: []string{"spam", "kimchirice", "koreanfood"}, viewCount: 340000, likeCount: 39000, commentCount: 900, shareCount: 4100},
 		},
 	},
 	{
-		menuItemName: "Birria Tacos",
+		menuItemName: "Bibimbap",
 		signals: []mockSignal{
-			{caption: "birria ramen fusion bowl, consomme as the broth, viral all over foodtok", hashtags: []string{"birria", "birriaramen", "foodtiktok"}, viewCount: 1200000, likeCount: 160000, commentCount: 4200, shareCount: 28000},
-			{caption: "birria grilled cheese with consomme for dipping is unreal", hashtags: []string{"birria", "grilledcheese", "newmenuitem"}, viewCount: 780000, likeCount: 98000, commentCount: 2600, shareCount: 17000},
+			{caption: "stone bowl bibimbap with the sizzling rice crust everyone's obsessed with", hashtags: []string{"bibimbap", "stonebowl", "foodtiktok"}, viewCount: 1200000, likeCount: 160000, commentCount: 4200, shareCount: 28000},
+			{caption: "vegan bibimbap bowls with gochujang tofu are the new foodtok staple", hashtags: []string{"vegan", "bibimbap", "koreanfood"}, viewCount: 780000, likeCount: 98000, commentCount: 2600, shareCount: 17000},
 			// Names the item directly (not just an adjacent trend) —
 			// exercises the promotion-opportunity classification, which
 			// checks for the item's name in the caption text rather than a
 			// distance sub-band (see mentionsItem in internal/agents/menuidea).
-			{caption: "I'm shook!! Birria Tacos here are unreal, best in town", hashtags: []string{"birriatacos", "foodtiktok"}, viewCount: 2100000, likeCount: 310000, commentCount: 6800, shareCount: 45000},
+			{caption: "I'm shook!! This Bibimbap here is unreal, best in town", hashtags: []string{"bibimbap", "foodtiktok"}, viewCount: 2100000, likeCount: 310000, commentCount: 6800, shareCount: 45000},
 		},
 	},
 	{
-		menuItemName: "Matcha Latte",
+		menuItemName: "Jeyuk Bokkeum",
 		signals: []mockSignal{
-			{caption: "matcha soft serve ice cream swirl trend at every cafe now", hashtags: []string{"matcha", "softserve", "foodtiktok"}, viewCount: 540000, likeCount: 61000, commentCount: 1400, shareCount: 7300},
-			{caption: "strawberry matcha layered latte, the color split is so aesthetic", hashtags: []string{"matchalatte", "strawberrymatcha", "foodie"}, viewCount: 690000, likeCount: 88000, commentCount: 2000, shareCount: 12500},
+			{caption: "spicy korean pork belly stir fry lettuce wraps trending all over tiktok", hashtags: []string{"koreanbbq", "porkbelly", "foodtiktok"}, viewCount: 540000, likeCount: 61000, commentCount: 1400, shareCount: 7300},
+			{caption: "gochujang glazed pork skewers grilled tableside, the char marks are insane", hashtags: []string{"gochujang", "porkskewers", "foodie"}, viewCount: 690000, likeCount: 88000, commentCount: 2000, shareCount: 12500},
 		},
 	},
 	{
-		menuItemName: "Loaded Nachos",
+		menuItemName: "Yangnyeom Fried Chicken",
 		signals: []mockSignal{
-			{caption: "birria nachos with consomme drizzle is the new loaded nacho upgrade", hashtags: []string{"birria", "nachos", "foodtrends"}, viewCount: 470000, likeCount: 58000, commentCount: 1500, shareCount: 8100},
-			{caption: "elote street corn nachos, cotija and chili lime everywhere", hashtags: []string{"elote", "nachos", "foodtiktok"}, viewCount: 310000, likeCount: 34000, commentCount: 800, shareCount: 3900},
+			{caption: "double fried korean chicken tossed in sweet spicy glaze, the crunch asmr videos are everywhere", hashtags: []string{"koreanfriedchicken", "asmr", "foodtiktok"}, viewCount: 470000, likeCount: 58000, commentCount: 1500, shareCount: 8100},
+			{caption: "korean fried chicken sandwiches with pickled radish are the new sando trend", hashtags: []string{"friedchickensando", "koreanfood", "foodtrends"}, viewCount: 310000, likeCount: 34000, commentCount: 800, shareCount: 3900},
 		},
 	},
 	{
-		menuItemName: "Korean Fried Chicken Wings",
+		menuItemName: "Japchae",
 		signals: []mockSignal{
-			{caption: "gochujang wings glazed and double fried, viral korean fusion trend", hashtags: []string{"koreanfood", "gochujang", "friedchicken"}, viewCount: 560000, likeCount: 69000, commentCount: 1700, shareCount: 9800},
-			{caption: "korean corn dog with cheese pull is still everywhere on foodtok", hashtags: []string{"koreancorndog", "foodtiktok", "cheesepull"}, viewCount: 920000, likeCount: 120000, commentCount: 3100, shareCount: 21000},
+			{caption: "glass noodle stir fry bowls with sesame oil going viral on foodtok", hashtags: []string{"japchae", "glassnoodles", "foodtiktok"}, viewCount: 560000, likeCount: 69000, commentCount: 1700, shareCount: 9800},
+			{caption: "japchae carbonara fusion noodles, the cream and gochugaru combo is wild", hashtags: []string{"japchae", "fusionfood", "noodles"}, viewCount: 290000, likeCount: 31000, commentCount: 700, shareCount: 3400},
+		},
+	},
+	{
+		menuItemName: "Kimchijeon",
+		signals: []mockSignal{
+			{caption: "crispy kimchi pancakes with a soy vinegar dip, the crackle sound videos are everywhere", hashtags: []string{"kimchijeon", "koreanpancake", "asmr"}, viewCount: 380000, likeCount: 42000, commentCount: 1000, shareCount: 5200},
+			{caption: "scallion and kimchi savory pancakes stacked tall, viral brunch trend", hashtags: []string{"pajeon", "koreanbrunch", "foodtiktok"}, viewCount: 260000, likeCount: 27000, commentCount: 650, shareCount: 3000},
+		},
+	},
+	{
+		menuItemName: "Mandu Dumplings",
+		signals: []mockSignal{
+			{caption: "pan fried dumplings with a lacy crispy skirt, the frico dumpling trend is everywhere", hashtags: []string{"mandu", "dumplings", "foodtiktok"}, viewCount: 450000, likeCount: 53000, commentCount: 1300, shareCount: 7000},
+			{caption: "steamed mandu dipped in chili oil, the fold technique videos are blowing up", hashtags: []string{"mandu", "koreanfood", "dumplings"}, viewCount: 310000, likeCount: 34000, commentCount: 850, shareCount: 3800},
+		},
+	},
+	{
+		menuItemName: "Tteokbokki",
+		signals: []mockSignal{
+			{caption: "cheese tteokbokki with mozzarella pull shots going viral again", hashtags: []string{"tteokbokki", "cheesepull", "foodtiktok"}, viewCount: 920000, likeCount: 120000, commentCount: 3100, shareCount: 21000},
+			{caption: "rosé tteokbokki, the creamy gochujang sauce trend is taking over foodtok", hashtags: []string{"rosetteokbokki", "gochujang", "koreanfood"}, viewCount: 500000, likeCount: 60000, commentCount: 1600, shareCount: 8600},
+		},
+	},
+	{
+		menuItemName: "Korean Corn Dog",
+		signals: []mockSignal{
+			{caption: "half rice cake half mozzarella corn dogs rolled in sugar and ramen crumbs, viral street food", hashtags: []string{"koreancorndog", "streetfood", "foodtiktok"}, viewCount: 1400000, likeCount: 210000, commentCount: 5200, shareCount: 33000},
+			{caption: "double cheese korean corn dogs with the cheese pull close-up shots everywhere", hashtags: []string{"koreancorndog", "cheesepull", "foodtrends"}, viewCount: 860000, likeCount: 110000, commentCount: 2900, shareCount: 19000},
+			{caption: "this Korean Corn Dog stand had the longest line, worth every minute", hashtags: []string{"koreancorndog", "foodtiktok"}, viewCount: 1900000, likeCount: 280000, commentCount: 6100, shareCount: 40000},
+		},
+	},
+	{
+		menuItemName: "Yuja Citron Tea",
+		signals: []mockSignal{
+			{caption: "citrus honey tea poured over ice with whole fruit slices, aesthetic drink trend", hashtags: []string{"yujacha", "citrustea", "foodtiktok"}, viewCount: 240000, likeCount: 26000, commentCount: 600, shareCount: 2800},
+			{caption: "yuzu soda floats with sparkling water are the new cafe drink everyone's making", hashtags: []string{"yuzu", "cafedrinks", "foodtrends"}, viewCount: 300000, likeCount: 33000, commentCount: 750, shareCount: 3600},
+		},
+	},
+	{
+		menuItemName: "Sikhye",
+		signals: []mockSignal{
+			{caption: "korean rice punch served ice cold with floating rice grains, nostalgic drink trend", hashtags: []string{"sikhye", "koreandrinks", "foodtiktok"}, viewCount: 180000, likeCount: 19000, commentCount: 450, shareCount: 2000},
+			{caption: "sweet rice drinks in glass bottles going viral as a dessert-table staple", hashtags: []string{"koreanfood", "sweetdrinks", "foodie"}, viewCount: 150000, likeCount: 15000, commentCount: 380, shareCount: 1600},
+		},
+	},
+	{
+		menuItemName: "Injeolmi Bingsu",
+		signals: []mockSignal{
+			{caption: "shaved milk ice topped with roasted soybean powder and rice cakes, viral dessert", hashtags: []string{"bingsu", "injeolmi", "foodtiktok"}, viewCount: 670000, likeCount: 81000, commentCount: 2000, shareCount: 11000},
+			{caption: "matcha injeolmi bingsu bowls shared between friends, the group dessert trend", hashtags: []string{"bingsu", "matcha", "koreandessert"}, viewCount: 420000, likeCount: 47000, commentCount: 1100, shareCount: 6300},
 		},
 	},
 }

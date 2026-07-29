@@ -10,9 +10,7 @@ package main
 import (
 	"context"
 	"log"
-	"sync"
 
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
 	"fbperformance/internal/agents/menuidea"
@@ -20,11 +18,6 @@ import (
 	"fbperformance/internal/services/llm"
 	"fbperformance/internal/store"
 )
-
-// ideaGenConcurrency bounds how many menu items are processed at once —
-// each involves an embed call, an adjacency search, and (if there's
-// evidence) a generation call.
-const ideaGenConcurrency = 4
 
 func main() {
 	_ = godotenv.Load()
@@ -49,63 +42,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("menu-idea-gen: list active menu items: %v", err)
 	}
+	log.Printf("menu-idea-gen: scanning %d active menu items", len(items))
 
-	batchRunID := uuid.New()
-	log.Printf("menu-idea-gen: scanning %d active menu items (batch %s)", len(items), batchRunID)
+	result := menuidea.RunBatch(ctx, agent, items, ideaStore, callLogStore)
 
-	sem := make(chan struct{}, ideaGenConcurrency)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var totalIdeas int
-	for _, item := range items {
-		wg.Add(1)
-		go func(item menuidea.MenuItem) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			n := processItem(ctx, agent, ideaStore, callLogStore, batchRunID, item)
-			mu.Lock()
-			totalIdeas += n
-			mu.Unlock()
-		}(item)
-	}
-	wg.Wait()
-
-	log.Printf("menu-idea-gen: done, %d ideas generated across %d items (batch %s)", totalIdeas, len(items), batchRunID)
-}
-
-// processItem generates and persists ideas for one menu item, logging and
-// continuing rather than aborting the run on any error. It always persists
-// a CallLog first — regardless of whether GenerateIdeas succeeded,
-// degraded, or hard-failed — so every item processed in a batch run is
-// inspectable afterward, including the ones that produced nothing. A hard
-// failure (e.g. the LLM call erroring) still logs and moves on, but any
-// candidates GenerateIdeas already produced before that failure (e.g. a
-// promotion idea, which needs no LLM call) are saved regardless — the
-// error only means the tweak path came up empty, not that nothing did.
-func processItem(ctx context.Context, agent *menuidea.Agent, ideaStore *store.MenuIdeaStore, callLogStore *store.MenuIdeaCallLogStore, batchRunID uuid.UUID, item menuidea.MenuItem) int {
-	candidates, callLog, err := agent.GenerateIdeas(ctx, item)
-	if logErr := callLogStore.Save(ctx, batchRunID, callLog); logErr != nil {
-		log.Printf("menu-idea-gen: item %s (%s): save call log: %v", item.Name, item.ID, logErr)
-	}
-	if err != nil {
-		log.Printf("menu-idea-gen: item %s (%s): generate ideas: %v", item.Name, item.ID, err)
-	}
-
-	saved := 0
-	for _, c := range candidates {
-		idea := menuidea.StoredIdea{
-			BatchRunID:             batchRunID,
-			InspiredByMenuItemID:   item.ID,
-			InspiredByMenuItemName: item.Name,
-			Status:                 "new",
-			IdeaCandidate:          c,
-		}
-		if err := ideaStore.Save(ctx, idea); err != nil {
-			log.Printf("menu-idea-gen: item %s (%s): save idea %q: %v", item.Name, item.ID, c.Name, err)
-			continue
-		}
-		saved++
-	}
-	return saved
+	log.Printf("menu-idea-gen: done, %d ideas generated across %d items (batch %s)", result.IdeasGenerated, result.MenuItemsScanned, result.BatchRunID)
 }

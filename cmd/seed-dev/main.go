@@ -41,12 +41,19 @@ type seedItem struct {
 }
 
 var seedItems = []seedItem{
-	{name: "Spicy Chicken Sandwich", category: "Entree", priceCents: 1299, cogsCents: 450, baseline: 14, trendPerDay: 0.35},
-	{name: "Salted Egg Coffee", category: "Beverage", priceCents: 650, cogsCents: 200, baseline: 9, trendPerDay: 0.15},
-	{name: "Birria Tacos", category: "Entree", priceCents: 1400, cogsCents: 525, baseline: 11, trendPerDay: 0},
-	{name: "Matcha Latte", category: "Beverage", priceCents: 575, cogsCents: 180, baseline: 6, trendPerDay: -0.1},
-	{name: "Loaded Nachos", category: "Appetizer", priceCents: 950, cogsCents: 310, baseline: 8, trendPerDay: -0.3},
-	{name: "Korean Fried Chicken Wings", category: "Appetizer", priceCents: 1100, cogsCents: 400, baseline: 5, trendPerDay: 0},
+	{name: "Bulgogi Bowl", category: "Entree", priceCents: 1499, cogsCents: 500, baseline: 12, trendPerDay: 0.3},
+	{name: "Kimchi Fried Rice", category: "Entree", priceCents: 1250, cogsCents: 400, baseline: 10, trendPerDay: 0.1},
+	{name: "Bibimbap", category: "Entree", priceCents: 1399, cogsCents: 475, baseline: 11, trendPerDay: 0.2},
+	{name: "Jeyuk Bokkeum", category: "Entree", priceCents: 1350, cogsCents: 460, baseline: 9, trendPerDay: 0.15},
+	{name: "Yangnyeom Fried Chicken", category: "Entree", priceCents: 1599, cogsCents: 550, baseline: 13, trendPerDay: 0.4},
+	{name: "Japchae", category: "Entree", priceCents: 1199, cogsCents: 380, baseline: 7, trendPerDay: -0.05},
+	{name: "Kimchijeon", category: "Appetizer", priceCents: 950, cogsCents: 300, baseline: 8, trendPerDay: 0},
+	{name: "Mandu Dumplings", category: "Appetizer", priceCents: 899, cogsCents: 290, baseline: 10, trendPerDay: 0.1},
+	{name: "Tteokbokki", category: "Appetizer", priceCents: 999, cogsCents: 320, baseline: 9, trendPerDay: 0.25},
+	{name: "Korean Corn Dog", category: "Appetizer", priceCents: 750, cogsCents: 250, baseline: 14, trendPerDay: 0.5},
+	{name: "Yuja Citron Tea", category: "Beverage", priceCents: 550, cogsCents: 180, baseline: 6, trendPerDay: 0.1},
+	{name: "Sikhye", category: "Beverage", priceCents: 450, cogsCents: 120, baseline: 5, trendPerDay: 0},
+	{name: "Injeolmi Bingsu", category: "Dessert", priceCents: 950, cogsCents: 320, baseline: 4, trendPerDay: -0.1},
 }
 
 func main() {

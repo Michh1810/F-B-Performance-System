@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -29,22 +30,29 @@ var validIdeaStatuses = map[string]bool{
 // so tests can exercise the handler with a hand-written fake instead of a
 // real Postgres connection, matching this repo's convention (see
 // RecommendationHandler / recommendation_test.go). *store.MenuIdeaStore
-// satisfies this as-is.
+// satisfies this as-is. Save is used only by Run, which is why it's absent
+// from the older tests in ideas_test.go that predate it.
 type IdeaStore interface {
 	List(ctx context.Context, status string) ([]menuidea.StoredIdea, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	PromoteToMenuItem(ctx context.Context, id uuid.UUID, priceCents, cogsCents int64) (menuidea.StoredIdea, error)
+	Save(ctx context.Context, idea menuidea.StoredIdea) error
 }
 
 // IdeasHandler exposes Menu Idea Agent output for human review: List
 // returns generated ideas (optionally filtered by status), UpdateStatus
-// records a human's review verdict on one idea.
+// records a human's review verdict on one idea, and Run triggers the Menu
+// Idea Agent on demand (the dashboard's "Run Agent" button) instead of
+// waiting for the next scheduled cmd/menu-idea-gen invocation.
 type IdeasHandler struct {
-	ideas IdeaStore
+	ideas     IdeaStore
+	menuItems MenuItemLister
+	agent     menuidea.IdeaGenerator
+	callLogs  menuidea.CallLogStore
 }
 
-func NewIdeasHandler(ideas IdeaStore) *IdeasHandler {
-	return &IdeasHandler{ideas: ideas}
+func NewIdeasHandler(ideas IdeaStore, menuItems MenuItemLister, agent menuidea.IdeaGenerator, callLogs menuidea.CallLogStore) *IdeasHandler {
+	return &IdeasHandler{ideas: ideas, menuItems: menuItems, agent: agent, callLogs: callLogs}
 }
 
 // List handles GET /api/ai/ideas, optionally filtered by ?status=.
@@ -133,4 +141,43 @@ func (h *IdeasHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": req.Status})
+}
+
+// runSummary is the response body for Run — see RunSummary in the
+// frontend's lib/api/types.ts, which this shape must match field-for-field.
+type runSummary struct {
+	BatchRunID       string `json:"batch_run_id"`
+	StartedAt        string `json:"started_at"`
+	CompletedAt      string `json:"completed_at"`
+	MenuItemsScanned int    `json:"menu_items_scanned"`
+	IdeasGenerated   int    `json:"ideas_generated"`
+}
+
+// Run handles POST /api/ai/ideas/run: the dashboard's "Run Agent" button.
+// It runs the same scan-active-items-and-generate-ideas pass as the
+// scheduler-invoked cmd/menu-idea-gen (see menuidea.RunBatch), synchronously,
+// so a human can trigger it on demand against whatever trend signals are
+// already in the corpus rather than waiting for the next scheduled run.
+func (h *IdeasHandler) Run(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	startedAt := time.Now().UTC()
+
+	items, err := h.menuItems.ListActive(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	result := menuidea.RunBatch(r.Context(), h.agent, items, h.ideas, h.callLogs)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(runSummary{
+		BatchRunID:       result.BatchRunID.String(),
+		StartedAt:        startedAt.Format(time.RFC3339),
+		CompletedAt:      time.Now().UTC().Format(time.RFC3339),
+		MenuItemsScanned: result.MenuItemsScanned,
+		IdeasGenerated:   result.IdeasGenerated,
+	})
 }

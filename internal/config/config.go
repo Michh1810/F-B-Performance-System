@@ -24,6 +24,10 @@ type Config struct {
 
 	TrendSignalLookbackDays int
 	TrendIngestHashtags     []string
+
+	// CORSAllowedOrigins is who may call the API from a browser (the
+	// frontend's dev/prod origins) — see cmd/api/main.go's cors.Handler.
+	CORSAllowedOrigins []string
 }
 
 func Load() Config {
@@ -59,6 +63,14 @@ func Load() Config {
 		}
 	}
 
+	corsOrigins := []string{"http://localhost:3000"}
+	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {
+		corsOrigins = strings.Split(v, ",")
+		for i := range corsOrigins {
+			corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
+		}
+	}
+
 	return Config{
 		Port:             port,
 		GeminiAPIKey:     os.Getenv("GEMINI_API_KEY"),
@@ -72,5 +84,7 @@ func Load() Config {
 
 		TrendSignalLookbackDays: lookbackDays,
 		TrendIngestHashtags:     hashtags,
+
+		CORSAllowedOrigins: corsOrigins,
 	}
 }
