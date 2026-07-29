@@ -19,11 +19,11 @@ The implementation deliberately uses a transparent statistical approach rather t
 | `cmd/api/main.go` | Opens PostgreSQL, constructs the AI and forecasting services, and registers the forecast endpoint. |
 | `go.mod`, `go.sum` | Adds the pgx PostgreSQL driver and its transitive dependencies. |
 | `internal/ai/client.go` | Implements the configurable Gemini-compatible AI client. |
-| `internal/demand_forecast/types.go` | Defines request, response, and transaction JSON contracts. |
-| `internal/demand_forecast/handler.go` | Handles HTTP decoding, validation, error mapping, and JSON responses. |
-| `internal/demand_forecast/service.go` | Implements loading history, the forecast model, AI adjustment, calculations, and persistence. |
-| `internal/demand_forecast/handler_test.go` | Verifies valid and invalid HTTP requests. |
-| `internal/demand_forecast/service_test.go` | Verifies forecast math, horizon handling, zero-sale days, and missing history. |
+| `internal/agents/financial/forecast_types.go` | Defines request, response, and transaction JSON contracts. |
+| `internal/agents/financial/forecast_handler.go` | Handles HTTP decoding, validation, error mapping, and JSON responses. |
+| `internal/agents/financial/forecast_service.go` | Implements loading history, the forecast model, AI adjustment, calculations, and persistence. |
+| `internal/agents/financial/forecast_handler_test.go` | Verifies valid and invalid HTTP requests. |
+| `internal/agents/financial/forecast_service_test.go` | Verifies forecast math, horizon handling, zero-sale days, and missing history. |
 | `migrations/000002_create_forecasts.*.sql` | Creates and rolls back the `forecasts` table. |
 | `migrations/000003_add_transaction_forecast_index.*.sql` | Adds and rolls back the transaction-history query index. |
 
@@ -34,9 +34,9 @@ The implementation deliberately uses a transparent statistical approach rather t
 1. It reads `DATABASE_URL`. If absent, it uses the local Docker-development PostgreSQL URL.
 2. It opens a `pgx`-backed `database/sql` connection and calls `Ping` so the process fails early when PostgreSQL is unavailable.
 3. It creates an AI client using `AI_API_KEY` and `AI_ENDPOINT` from the environment.
-4. It injects the database and AI client into `demand_forecast.NewServiceWithDB`.
-5. It wraps that service in `demand_forecast.NewHandler`.
-6. It registers the handler as `POST /api/forecast`.
+4. It injects the database and AI client into `financial.NewServiceWithDB`.
+5. It wraps that service in `financial.NewHandler`.
+6. It registers the handler as `POST /api/forecast`. The same `Service` is also injected into the Financial Agent (`financial.NewAgent`), which runs the forecast internally as part of the multi-agent recommendation pipeline (`POST /api/ai/recommendation`).
 
 This dependency injection means the forecasting package does not open its own database connection or read environment variables directly. The AI package owns AI environment configuration, and `main` owns application construction.
 
@@ -126,7 +126,7 @@ If neither supplied history nor database history contains sales, the endpoint re
 
 ## Forecast Service
 
-`internal/demand_forecast/service.go` contains the domain workflow in `ForecastMenuItems`.
+`internal/agents/financial/forecast_service.go` contains the domain workflow in `ForecastMenuItems`.
 
 ### 1. Select transaction history
 
@@ -323,7 +323,7 @@ Drops the transaction-history index during rollback.
 Run the focused tests with:
 
 ```bash
-go test ./internal/demand_forecast ./internal/ai
+go test ./internal/agents/financial ./internal/ai
 ```
 
 `handler_test.go` verifies:

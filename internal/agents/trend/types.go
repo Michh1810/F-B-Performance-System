@@ -40,6 +40,26 @@ type Signal struct {
 	CommentCount int64
 	ShareCount   int64
 	PostedAt     time.Time
+	// URL links back to the actual video, e.g. for the Menu Idea Agent to
+	// attach as evidence alongside an idea's caption/hashtag summary. May
+	// be empty for signals ingested before this field existed.
+	URL string
+	// TopComments is a handful of top comments captured at ingestion time
+	// — richer evidence than caption/hashtags alone (e.g. "everyone in the
+	// comments says X"), captured now for future sentiment/entity-analysis
+	// consumers even though nothing reads it yet. Empty for signals
+	// ingested before this field existed, or where the source video had no
+	// comments fetched.
+	TopComments []Comment
+}
+
+// Comment is a lightweight comment captured as evidence alongside a
+// Signal — deliberately not tiktok.Comment, so this package doesn't depend
+// on the ingestion client's types (same reasoning as Signal itself being a
+// local DTO rather than reusing tiktok.Video).
+type Comment struct {
+	Text      string
+	DiggCount int64
 }
 
 // SignalSearcher is the subset of trend-signal storage the Trend Agent

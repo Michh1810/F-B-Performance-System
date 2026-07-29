@@ -55,8 +55,8 @@ func (o *Orchestrator) GetRecommendation(ctx context.Context, req Request) (*Res
 	go func() {
 		defer wg.Done()
 		financialOut.text, financialOut.err = o.financial.Analyze(ctx, financial.Input{
-			ItemName:      req.ItemName,
-			FinancialData: req.FinancialData,
+			MenuItemID: req.MenuItemID,
+			ItemName:   req.ItemName,
 		})
 	}()
 	wg.Wait()

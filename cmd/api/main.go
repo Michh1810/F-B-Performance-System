@@ -15,12 +15,12 @@ import (
 	"github.com/joho/godotenv"
 
 	"fbperformance/internal/agents/financial"
+	"fbperformance/internal/agents/hashtagsuggest"
 	"fbperformance/internal/agents/manager"
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/ai"
 	"fbperformance/internal/config"
-	"fbperformance/internal/demand_forecast"
 	"fbperformance/internal/handlers"
 	"fbperformance/internal/performance_analytics"
 	"fbperformance/internal/services/llm"
@@ -56,15 +56,26 @@ func main() {
 	signalStore := store.NewTrendSignalStore(pool)
 
 	aiClient := ai.NewClientFromEnv()
-	forecastingService := demand_forecast.NewServiceWithDB(db, aiClient)
-	forecastingHandler := demand_forecast.NewHandler(forecastingService)
+	forecastingService := financial.NewServiceWithDB(db, aiClient)
+	forecastingHandler := financial.NewHandler(forecastingService)
+	menuItemStore := store.NewMenuItemStore(pool)
 
 	llmClient := llm.NewClient(cfg.GeminiAPIKey)
 	trendAgent := trend.NewAgent(llmClient, llmClient, signalStore, snapshotStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
-	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel)
+	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel, menuItemStore, forecastingService)
 	managerAgent := manager.NewAgent(llmClient, cfg.GeminiModel)
 	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
 	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
+
+	ideaStore := store.NewMenuIdeaStore(pool)
+	ideasHandler := handlers.NewIdeasHandler(ideaStore)
+
+	restaurantProfileStore := store.NewRestaurantProfileStore(pool)
+	restaurantProfileHandler := handlers.NewRestaurantProfileHandler(restaurantProfileStore)
+
+	hashtagSuggestionStore := store.NewTrendHashtagSuggestionStore(pool)
+	hashtagSuggestAgent := hashtagsuggest.NewAgent(llmClient, cfg.GeminiModel)
+	trendHashtagsHandler := handlers.NewTrendHashtagsHandler(restaurantProfileStore, menuItemStore, hashtagSuggestAgent, hashtagSuggestionStore)
 
 	repo := performance_analytics.NewRepository(pool)
 	analyticsService := performance_analytics.NewService(repo)
@@ -100,6 +111,20 @@ func main() {
 		r.Handle("/forecast", forecastingHandler)
 		r.Route("/ai", func(r chi.Router) {
 			r.Handle("/recommendation", recommendationHandler)
+			r.Route("/ideas", func(r chi.Router) {
+				r.Get("/", ideasHandler.List)
+				r.Patch("/{id}", ideasHandler.UpdateStatus)
+			})
+		})
+
+		r.Route("/restaurant-profile", func(r chi.Router) {
+			r.Get("/", restaurantProfileHandler.Get)
+			r.Put("/", restaurantProfileHandler.Upsert)
+		})
+		r.Route("/trend-hashtags/suggestions", func(r chi.Router) {
+			r.Get("/", trendHashtagsHandler.List)
+			r.Post("/", trendHashtagsHandler.Generate)
+			r.Patch("/{id}", trendHashtagsHandler.UpdateStatus)
 		})
 
 		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
