@@ -2,10 +2,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowDownIcon, ArrowUpIcon, DollarSign, ShoppingBag, CreditCard, Star } from "lucide-react"
 import { format, subDays } from "date-fns"
-import { weeklyPulseData } from "./mock-data"
 
-export function WeeklyPulse() {
-  const { revenue, orders, aov, sentiment } = weeklyPulseData
+interface Metric {
+  value: number
+  label: string
+  trend: string
+  trendUp: boolean
+  vs: string
+}
+
+interface WeeklyPulseProps {
+  pulse: {
+    revenue: Metric
+    aov: Metric
+    orders: Metric
+    sentiment: Metric
+  }
+}
+
+export function WeeklyPulse({ pulse }: WeeklyPulseProps) {
+  if (!pulse) return null
+  const { revenue, orders, aov, sentiment } = pulse
 
   const today = new Date()
   const lastWeek = subDays(today, 7)
@@ -20,13 +37,13 @@ export function WeeklyPulse() {
         </Badge>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="flex flex-col h-full">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{revenue.label}</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <DollarSign className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${revenue.value.toLocaleString()}</div>
+          <CardContent className="mt-auto">
+            <div className="text-2xl font-bold">${revenue.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <span className={revenue.trendUp ? "text-green-500" : "text-red-500"}>
                 {revenue.trendUp ? <ArrowUpIcon className="h-3 w-3 inline" /> : <ArrowDownIcon className="h-3 w-3 inline" />}
@@ -37,13 +54,13 @@ export function WeeklyPulse() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col h-full">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{aov.label}</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <CreditCard className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${aov.value.toLocaleString()}</div>
+          <CardContent className="mt-auto">
+            <div className="text-2xl font-bold">${aov.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <span className={aov.trendUp ? "text-green-500" : "text-red-500"}>
                 {aov.trendUp ? <ArrowUpIcon className="h-3 w-3 inline" /> : <ArrowDownIcon className="h-3 w-3 inline" />}
@@ -54,12 +71,12 @@ export function WeeklyPulse() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col h-full">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{orders.label}</CardTitle>
-            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+            <ShoppingBag className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-auto">
             <div className="text-2xl font-bold">{orders.value.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <span className={orders.trendUp ? "text-green-500" : "text-red-500"}>
@@ -71,12 +88,12 @@ export function WeeklyPulse() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col h-full">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{sentiment.label}</CardTitle>
-            <Star className="h-4 w-4 text-muted-foreground" />
+            <Star className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-auto">
             <div className="text-2xl font-bold">{sentiment.value.toFixed(1)} <span className="text-sm text-muted-foreground font-normal">/ 5.0</span></div>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <span className={sentiment.trendUp ? "text-green-500" : "text-red-500"}>

@@ -24,6 +24,13 @@ type TendersResponse struct {
 	} `json:"elements"`
 }
 
+type OrderTypesResponse struct {
+	Elements []struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+	} `json:"elements"`
+}
+
 type Item struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -107,13 +114,42 @@ func main() {
 	}
 	fmt.Println("Found Cash Tender ID:", cashTenderID)
 
+	// 1.6 Fetch the Order Types for the merchant
+	reqTypes, _ := http.NewRequest("GET", baseURL+merchantID+"/order_types", nil)
+	reqTypes.Header.Add("Authorization", "Bearer "+apiToken)
+	reqTypes.Header.Add("accept", "application/json")
+
+	respTypes, errTypes := client.Do(reqTypes)
+	if errTypes != nil {
+		fmt.Println("Error fetching order types:", errTypes)
+		return
+	}
+	defer respTypes.Body.Close()
+	bodyTypes, _ := ioutil.ReadAll(respTypes.Body)
+
+	var orderTypes OrderTypesResponse
+	json.Unmarshal(bodyTypes, &orderTypes)
+
+	if len(orderTypes.Elements) == 0 {
+		fmt.Println("Warning: No order types found for this merchant. Revenue Class Breakdown will show as Uncategorized.")
+	} else {
+		fmt.Printf("Loaded %d order types for seeding.\n", len(orderTypes.Elements))
+	}
+
 	// 2. Loop 100 times to generate orders
 	for i := 1; i <= 60; i++ {
 		// Generate a realistic timestamp in the past 30 days
 		historicalTime := generateRealisticSalesTime(30)
 
+		// Pick a random order type if any exist
+		var orderTypeStr string
+		if len(orderTypes.Elements) > 0 {
+			randomType := orderTypes.Elements[rand.Intn(len(orderTypes.Elements))]
+			orderTypeStr = fmt.Sprintf(`, "orderType": {"id": "%s"}`, randomType.ID)
+		}
+
 		// Pass the backdated timestamp in the payload
-		orderPayload := fmt.Sprintf(`{"clientCreatedTime": %d, "state": "locked"}`, historicalTime)
+		orderPayload := fmt.Sprintf(`{"clientCreatedTime": %d, "state": "locked"%s}`, historicalTime, orderTypeStr)
 
 		orderReq, _ := http.NewRequest("POST", baseURL+merchantID+"/orders", bytes.NewBuffer([]byte(orderPayload)))
 		orderReq.Header.Add("Authorization", "Bearer "+apiToken)

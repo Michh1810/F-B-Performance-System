@@ -205,8 +205,8 @@ func CalculateRevenueByClass(cloverData *CloverOrderResponse) map[string]float64
 	// 2. Loop through every order pulled from Clover
 	for _, order := range cloverData.Elements {
 
-		// Safety check: Skip orders that weren't paid for
-		if order.PaymentState != "PAID" {
+		// Safety check: Skip orders that weren't paid for (allow OPEN for sandbox)
+		if order.PaymentState != "PAID" && order.PaymentState != "OPEN" {
 			continue
 		}
 
@@ -230,47 +230,64 @@ func CalculateRevenueByClass(cloverData *CloverOrderResponse) map[string]float64
 
 // GetPerformanceDashboard orchestrates Clover and Postgres data for the dashboard
 func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Time) (*PerformanceDashboardResponse, error) {
-	// 1. Fetch Clover Data
-	cloverData, err := s.GetCloverOrders(from, to)
+	// Calculate Previous Period Dates
+	window := to.Sub(from)
+	previousTo := from
+	previousFrom := previousTo.Add(-window)
+
+	// 1. Fetch Top Items from Repo (for Master Table, Category Dominance, and Net Sales)
+	rows, err := s.repo.GetTopItems(ctx, from, to, previousFrom, previousTo, "revenue", 5000)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get clover orders: %w", err)
+		return nil, fmt.Errorf("failed to get top items: %w", err)
 	}
 
-	// 2. Calculate Revenue Classes
-	revenueByClassMap := CalculateRevenueByClass(cloverData)
-	var revenueClasses []RevenueClassData
+	// 2. Calculate Macro KPIs from Postgres Data
+	var netSales, prevNetSales float64
+	for _, row := range rows {
+		netSales += row.Revenue
+		prevNetSales += row.Revenue / (1 + (row.TrendPercent / 100.0)) // reverse engineer previous revenue safely
+	}
+	
+	orderCount, err := s.repo.GetOrderCount(ctx, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get order count: %w", err)
+	}
+	
+	prevOrderCount, err := s.repo.GetOrderCount(ctx, previousFrom, previousTo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get previous order count: %w", err)
+	}
+
+	var avgTicketSize, prevAvgTicketSize float64
+	if orderCount > 0 {
+		avgTicketSize = netSales / float64(orderCount)
+	}
+	if prevOrderCount > 0 {
+		prevAvgTicketSize = prevNetSales / float64(prevOrderCount)
+	}
+
+	calculateTrend := func(current, previous float64) float64 {
+		if previous == 0 {
+			return 0
+		}
+		return ((current - previous) / previous) * 100
+	}
+
+	netSalesTrend := calculateTrend(netSales, prevNetSales)
+	ordersTrend := calculateTrend(float64(orderCount), float64(prevOrderCount))
+	avgTicketSizeTrend := calculateTrend(avgTicketSize, prevAvgTicketSize)
+
+	// 3. Calculate Revenue Classes
+	revenueByClassMap, err := s.repo.GetRevenueByClass(ctx, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get revenue by class: %w", err)
+	}
+	revenueClasses := make([]RevenueClassData, 0)
 	for class, revenue := range revenueByClassMap {
 		revenueClasses = append(revenueClasses, RevenueClassData{
 			Channel: class,
 			Revenue: revenue,
 		})
-	}
-
-	// 3. Calculate Macro KPIs from Clover Data
-	var netSales float64
-	var orderCount int
-	if cloverData != nil {
-		for _, order := range cloverData.Elements {
-			if order.PaymentState == "PAID" {
-				netSales += float64(order.Total) / 100.0
-				orderCount++
-			}
-		}
-	}
-	
-	var avgTicketSize float64
-	if orderCount > 0 {
-		avgTicketSize = netSales / float64(orderCount)
-	}
-
-	// 4. Fetch Top Items from Repo (for Master Table and Category Dominance)
-	window := to.Sub(from)
-	previousTo := from
-	previousFrom := previousTo.Add(-window)
-
-	rows, err := s.repo.GetTopItems(ctx, from, to, previousFrom, previousTo, "revenue", 50)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get top items: %w", err)
 	}
 
 	// 5. Calculate Category Dominance
@@ -293,7 +310,7 @@ func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Tim
 	}
 
 	// 6. Build Master Table
-	var masterTable []MasterTableItem
+	masterTable := make([]MasterTableItem, 0)
 	for _, row := range rows {
 		price := 0.0
 		if row.UnitsSold > 0 {
@@ -314,9 +331,9 @@ func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Tim
 	// Return the aggregated data
 	return &PerformanceDashboardResponse{
 		KPIs: MacroKPIs{
-			NetSales: netSales,
-			OrderTraffic: KPIMetric{Value: float64(orderCount), Trend: 0},
-			AverageTicketSize: KPIMetric{Value: avgTicketSize, Trend: 0},
+			NetSales:          KPIMetric{Value: netSales, Trend: netSalesTrend},
+			OrderTraffic:      KPIMetric{Value: float64(orderCount), Trend: ordersTrend},
+			AverageTicketSize: KPIMetric{Value: avgTicketSize, Trend: avgTicketSizeTrend},
 			CategoryDominance: CategoryDominance{
 				CategoryName: topCategory,
 				Percentage:   categoryDominancePercentage,

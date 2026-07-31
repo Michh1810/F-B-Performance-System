@@ -13,7 +13,8 @@ CREATE TABLE transactions (
     menu_item_id UUID NOT NULL REFERENCES menu_items(id),
     quantity INTEGER NOT NULL,
     unit_price DECIMAL(10, 2) NOT NULL,
-    sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    order_type VARCHAR(255)
 );
 
 CREATE TABLE yelp_reviews (

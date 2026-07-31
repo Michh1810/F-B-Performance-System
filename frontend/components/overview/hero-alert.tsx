@@ -1,10 +1,18 @@
 import { AlertTriangle, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { criticalAlert } from "./mock-data"
 
-export function HeroAlert() {
-  if (!criticalAlert.active) return null
+interface HeroAlertProps {
+  criticalAlert: {
+    active: boolean
+    type: string
+    title: string
+    message: string
+  } | null
+}
+
+export function HeroAlert({ criticalAlert }: HeroAlertProps) {
+  if (!criticalAlert || !criticalAlert.active) return null
 
   const isDestructive = criticalAlert.type === "destructive"
 

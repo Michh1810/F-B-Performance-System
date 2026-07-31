@@ -13,16 +13,53 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { masterItemsData } from "./mock-data"
 import { ItemDetailDrawer } from "./item-detail-drawer"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
-export function MasterTable() {
+interface BackendMasterTableItem {
+  id: string
+  name: string
+  category: string
+  price: number
+  unitsSold: number
+  netRevenue: number
+  guestMentions: number
+  saleTrend: number
+}
+
+export function MasterTable({ masterTable }: { masterTable?: BackendMasterTableItem[] }) {
   const [selectedItem, setSelectedItem] = React.useState<any>(null)
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false)
+  const [currentPage, setCurrentPage] = React.useState(1)
+  
+  const itemsPerPage = 15
 
   const handleRowClick = (item: any) => {
     setSelectedItem(item)
     setIsDrawerOpen(true)
   }
+
+  const formatTrend = (trend: number) => {
+    if (!trend) return "0%"
+    const sign = trend > 0 ? "+" : ""
+    return `${sign}${trend.toFixed(1)}%`
+  }
+
+  const items = (masterTable || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    price: item.price,
+    unitsSold: item.unitsSold,
+    totalRevenue: item.netRevenue,
+    guestMentions: item.guestMentions,
+    trend: formatTrend(item.saleTrend),
+    trendUp: item.saleTrend >= 0,
+  }))
+
+  const sortedItems = [...items].sort((a, b) => b.totalRevenue - a.totalRevenue)
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / itemsPerPage))
+  const paginatedItems = sortedItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   return (
     <>
@@ -45,9 +82,7 @@ export function MasterTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...masterItemsData]
-                  .sort((a, b) => b.totalRevenue - a.totalRevenue)
-                  .map((item) => (
+                {paginatedItems.map((item) => (
                   <TableRow
                     key={item.id}
                     className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -59,7 +94,7 @@ export function MasterTable() {
                     </TableCell>
                     <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
                     <TableCell className="text-right">{item.unitsSold}</TableCell>
-                    <TableCell className="text-right">${item.totalRevenue.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">${item.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
                     <TableCell className="text-center">
                       {item.guestMentions > 0 ? (
                         <Badge variant="secondary" className="gap-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900">
@@ -79,6 +114,32 @@ export function MasterTable() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+          
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {sortedItems.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, sortedItems.length)} of {sortedItems.length} items
+            </p>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

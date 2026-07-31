@@ -1,9 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, DollarSign, AlertCircle, MessageSquare } from "lucide-react"
-import { aiInsightsData } from "./mock-data"
 
-export function AIInsights() {
+interface AIInsight {
+  id: string
+  pillar: string
+  title: string
+  icon: string
+  suggestion: string
+}
+
+export function AIInsights({ insights }: { insights: AIInsight[] }) {
+  if (!insights || insights.length === 0) return null
+  
   const getIcon = (iconName: string) => {
     switch (iconName) {
       case "trendingUp": return <TrendingUp className="h-4 w-4 text-primary" />
@@ -26,7 +35,7 @@ export function AIInsights() {
       </CardHeader>
       <CardContent className="flex-1 pb-6">
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-0 h-full divide-y sm:divide-y-0 sm:divide-x">
-          {aiInsightsData.map((insight) => (
+          {insights.map((insight) => (
             <div key={insight.id} className="flex-1 flex flex-col sm:px-4 first:sm:pl-0 last:sm:pr-0 py-4 sm:py-0">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-1.5 bg-muted rounded-md shrink-0">

@@ -15,7 +15,7 @@ export default async function PerformanceDataPage() {
         <h1 className="heading-large">Performance Data</h1>
       </div>
       <FilterBar />
-      <MacroView kpis={dashboardData.kpis} />
+      <MacroView kpis={dashboardData.kpis} revenueClasses={dashboardData.revenueClasses} />
       <MasterTable masterTable={dashboardData.masterTable} />
     </div>
   )

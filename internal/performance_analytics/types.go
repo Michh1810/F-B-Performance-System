@@ -166,7 +166,7 @@ type CategoryDominance struct {
 }
 
 type MacroKPIs struct {
-	NetSales          float64           `json:"netSales"`
+	NetSales          KPIMetric         `json:"netSales"`
 	OrderTraffic      KPIMetric         `json:"orders"`
 	AverageTicketSize KPIMetric         `json:"averageTicketSize"`
 	CategoryDominance CategoryDominance `json:"categoryDominance"`
