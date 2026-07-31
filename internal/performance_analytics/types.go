@@ -75,9 +75,15 @@ type CloverLineItem struct {
 	} `json:"item"`
 }
 
+type CloverOrderType struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type CloverOrder struct {
 	ID        string `json:"id"`
 	Total     int    `json:"total"`
+	OrderType CloverOrderType `json:"orderType"`
 	LineItems struct {
 		Elements []CloverLineItem `json:"elements"`
 	} `json:"lineItems"`
@@ -141,4 +147,43 @@ type ReviewSummaryResponse struct {
 	SentimentBreakdown SentimentBreakdown    `json:"sentimentBreakdown"`
 	SentimentTrend     []SentimentTrendPoint `json:"sentimentTrend"`
 	TopKeywords        []string              `json:"topKeywords"`
+}
+
+type PerformanceDashboardResponse struct {
+	KPIs           MacroKPIs          `json:"kpis"`
+	RevenueClasses []RevenueClassData `json:"revenueClasses"`
+	MasterTable    []MasterTableItem  `json:"masterTable"`
+}
+
+type KPIMetric struct {
+	Value float64 `json:"value"`
+	Trend float64 `json:"trend"` // e.g., 12.0 for 12%
+}
+
+type CategoryDominance struct {
+	CategoryName string  `json:"categoryName"`
+	Percentage   float64 `json:"percentage"`
+}
+
+type MacroKPIs struct {
+	NetSales          KPIMetric         `json:"netSales"`
+	OrderTraffic      KPIMetric         `json:"orders"`
+	AverageTicketSize KPIMetric         `json:"averageTicketSize"`
+	CategoryDominance CategoryDominance `json:"categoryDominance"`
+}
+
+type RevenueClassData struct {
+	Channel string  `json:"channel"`
+	Revenue float64 `json:"revenue"`
+}
+
+type MasterTableItem struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Category      string  `json:"category"`
+	Price         float64 `json:"price"`
+	UnitsSold     int     `json:"unitsSold"`
+	NetRevenue    float64 `json:"netRevenue"`
+	GuestMentions int     `json:"guestMentions"`
+	SaleTrend     float64 `json:"saleTrend"`
 }

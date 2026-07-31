@@ -230,3 +230,38 @@ func (r *Repository) SaveGoogleReviews(ctx context.Context, reviews []GoogleRevi
 
 	return nil
 }
+
+func (r *Repository) GetOrderCount(ctx context.Context, from, to time.Time) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx, "SELECT COUNT(DISTINCT sold_at) FROM transactions WHERE sold_at >= $1 AND sold_at < $2", from, to).Scan(&count)
+	return count, err
+}
+
+func (r *Repository) GetRevenueByClass(ctx context.Context, from, to time.Time) (map[string]float64, error) {
+	query := `
+		SELECT order_type, COALESCE(SUM(quantity * unit_price), 0)
+		FROM transactions
+		WHERE sold_at >= $1 AND sold_at < $2
+		GROUP BY order_type
+	`
+	rows, err := r.db.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	revenueMap := make(map[string]float64)
+	for rows.Next() {
+		var orderType *string
+		var revenue float64
+		if err := rows.Scan(&orderType, &revenue); err != nil {
+			return nil, err
+		}
+		key := "Other"
+		if orderType != nil && *orderType != "" {
+			key = *orderType
+		}
+		revenueMap[key] = revenue
+	}
+	return revenueMap, rows.Err()
+}

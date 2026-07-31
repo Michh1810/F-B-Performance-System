@@ -22,6 +22,7 @@ import (
 	"fbperformance/internal/config"
 	"fbperformance/internal/demand_forecast"
 	"fbperformance/internal/handlers"
+	"fbperformance/internal/overview"
 	"fbperformance/internal/performance_analytics"
 	"fbperformance/internal/services/llm"
 	"fbperformance/internal/store"
@@ -70,6 +71,10 @@ func main() {
 	analyticsService := performance_analytics.NewService(repo)
 	analyticsHandler := performance_analytics.NewHandler(analyticsService)
 
+	overviewRepo := overview.NewRepository(pool)
+	overviewService := overview.NewService(overviewRepo, llmClient)
+	overviewHandler := overview.NewHandler(overviewService)
+
 	port := cfg.Port
 	if port == "" {
 		port = os.Getenv("PORT")
@@ -104,6 +109,8 @@ func main() {
 
 		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
 		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
+		r.Get("/v1/performance-dashboard", analyticsHandler.HandlePerformanceDashboard)
+		r.Get("/v1/overview", overviewHandler.HandleGetOverview)
 		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
 		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})

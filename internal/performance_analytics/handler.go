@@ -3,6 +3,7 @@ package performance_analytics
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -125,8 +126,14 @@ func (h *Handler) ServeGoogleReviewHTTP(w http.ResponseWriter, r *http.Request) 
 
 // Serve Clover Data Request
 func (h *Handler) ServeCloverOrdersHTTP(w http.ResponseWriter, r *http.Request) {
+	from, to, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// 1. Call the service function we just built
-	data, err := h.s.GetCloverOrders()
+	data, err := h.s.GetCloverOrders(from, to)
 	if err != nil {
 		// If Clover API fails, return a 500 server error
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -139,4 +146,30 @@ func (h *Handler) ServeCloverOrdersHTTP(w http.ResponseWriter, r *http.Request) 
 
 	// 3. Send the JSON back to the client!
 	json.NewEncoder(w).Encode(data)
+}
+
+// HandlePerformanceDashboard serves the unified performance dashboard data
+func (h *Handler) HandlePerformanceDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	from, to, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data, err := h.s.GetPerformanceDashboard(r.Context(), from, to)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to load performance dashboard: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

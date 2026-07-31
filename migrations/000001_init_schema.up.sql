@@ -13,7 +13,8 @@ CREATE TABLE transactions (
     menu_item_id UUID NOT NULL REFERENCES menu_items(id),
     quantity INTEGER NOT NULL,
     unit_price DECIMAL(10, 2) NOT NULL,
-    sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    order_type VARCHAR(255)
 );
 
 CREATE TABLE yelp_reviews (
@@ -38,7 +39,7 @@ CREATE TABLE google_reviews (
 
 
 CREATE TABLE all_reviews (
-    review_id VARCHAR(255) PRIMARY KEY, -- Use Yelp's ID or Google's ID
+    review_id VARCHAR(255), -- Use Yelp's ID or Google's ID
     source VARCHAR(22) NOT NULL,        -- Strictly 'google' or 'yelp'
 
     star SMALLINT NOT NULL CHECK (star >= 1 AND star <= 5),
