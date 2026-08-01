@@ -1,16 +1,11 @@
 import { apiRequest } from "./client"
 import type { RunSummary } from "./types"
 
-// PLACEHOLDER ENDPOINT — no backend route exists for this yet.
-//
-// Today the Menu Idea Agent only runs as a scheduler-invoked batch binary
-// (cmd/menu-idea-gen) and hashtag-driven TikTok ingestion is a separate CLI
-// (cmd/trend-ingest); neither is wired to HTTP. This function is the seam
-// the "Run Menu Idea Agent" button calls through, so wiring up the real
-// endpoint later only means implementing this request server-side — no
-// frontend changes. Until then it will 404, which callers should treat as
-// "not implemented yet" (see ApiError.notImplemented in client.ts) rather
-// than an inline fetch failure.
+// POST /api/ai/ideas/run — internal/handlers/ideas.go. Runs the same
+// scan-active-items-and-generate-ideas pass as the scheduler-invoked
+// cmd/menu-idea-gen, synchronously, against whatever trend signals are
+// already in the corpus (hashtag-driven TikTok ingestion itself is still a
+// separate CLI, cmd/trend-ingest, not triggered by this call).
 export function runMenuIdeaAgent(): Promise<RunSummary> {
   return apiRequest<RunSummary>("/api/ai/ideas/run", { method: "POST" })
 }
