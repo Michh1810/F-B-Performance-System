@@ -17,6 +17,11 @@ type Config struct {
 	GeminiModel      string
 	GeminiEmbedModel string
 
+	PostHogAPIKey               string
+	PostHogHost                 string
+	PostHogDistinctID           string
+	PostHogFeatureFlagTimeoutMS int
+
 	DatabaseURL string
 
 	ApifyAPIToken string
@@ -71,11 +76,28 @@ func Load() Config {
 		}
 	}
 
+	postHogDistinctID := os.Getenv("POSTHOG_DISTINCT_ID")
+	if postHogDistinctID == "" {
+		postHogDistinctID = "fbperformance-backend"
+	}
+
+	postHogTimeoutMS := 200
+	if v := os.Getenv("POSTHOG_FEATURE_FLAG_TIMEOUT_MS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			postHogTimeoutMS = parsed
+		}
+	}
+
 	return Config{
 		Port:             port,
 		GeminiAPIKey:     os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:      model,
 		GeminiEmbedModel: embedModel,
+
+		PostHogAPIKey:               os.Getenv("POSTHOG_API_KEY"),
+		PostHogHost:                 os.Getenv("POSTHOG_HOST"),
+		PostHogDistinctID:           postHogDistinctID,
+		PostHogFeatureFlagTimeoutMS: postHogTimeoutMS,
 
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 
