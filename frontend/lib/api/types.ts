@@ -20,6 +20,12 @@ export type ActiveMenuItem = {
   id: string
   name: string
   category: string
+  price_cents: number
+  cogs_cents: number
+  // has_sufficient_history is false for a never-sold or too-recently-added
+  // item — the Financial Agent's forecast needs real sales history to be
+  // meaningful, so the Menu Strategy table hides "Analyze" until this flips.
+  has_sufficient_history: boolean
 }
 
 // IdeaKind mirrors menuidea.IdeaCandidate.Kind: "promotion" is a
@@ -56,13 +62,46 @@ export type UpdateIdeaStatusRequest = {
   cogs_cents?: number
 }
 
-// RunSummary is what the Menu Idea Agent run CTA reports back — see
-// runMenuIdeaAgent's PLACEHOLDER_ENDPOINT note in ideas.ts for why this
-// isn't backed by a real endpoint yet.
+// RunSummary is what POST /api/ai/ideas/run reports back — see runs.ts.
 export type RunSummary = {
   batch_run_id: string
   started_at: string
   completed_at: string
   menu_items_scanned: number
   ideas_generated: number
+}
+
+// Decision mirrors manager.Decision — the Manager Agent's only three
+// possible calls on an existing menu item. There is no "IMPROVE" — LAUNCH
+// is reused to mean "keep it, it's working" for an existing item (see
+// internal/agents/manager/prompt.go).
+export type Decision = "LAUNCH" | "CUT" | "REPRICE"
+
+// TrendMetrics mirrors orchestrator.TrendMetrics — the structured TikTok
+// signal the Trend Agent grounded its narrative in.
+export type TrendMetrics = {
+  video_count: number
+  total_views: number
+  total_likes: number
+  total_comments: number
+  total_shares: number
+  engagement_rate: number
+  sentiment_label: string
+  sentiment_score: number
+  growth_rate_pct: number | null
+  growth_period_hours: number
+  top_hashtags: string[]
+  related_trends: string[]
+}
+
+// RecommendationResponse mirrors orchestrator.Response — POST
+// /api/ai/recommendation's body, synthesized from the Trend, Financial, and
+// Manager agents running concurrently then converging on one decision.
+export type RecommendationResponse = {
+  item_name: string
+  decision: Decision
+  reasoning: string
+  trend_analysis: string
+  financial_analysis: string
+  trend_metrics: TrendMetrics
 }
