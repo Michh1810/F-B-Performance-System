@@ -1,65 +1,41 @@
-type MenuItem = {
-  id: string
-  name: string
-  menuCategory: string
-  unitsSold: number
-  popularityIndex: number
-  revenue: number
-  foodCostPercent: number
-  contributionMargin: number
-  performanceCategory: string
-  trendPercent: number
-}
-
-type MenuItemsResponse = {
-  dateRange: {
-    from: string
-    to: string
-  }
-  items: MenuItem[]
-}
-
-async function getTopItems(): Promise<MenuItemsResponse | null> {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"
-  const response = await fetch(`${baseUrl}/api/v1/dashboard/menu-items`, {
-    cache: "no-store",
-  })
-
-  if (!response.ok) {
-    return null
-  }
-
-  return (await response.json()) as MenuItemsResponse
-}
+import { HeroAlert } from "@/components/overview/hero-alert"
+import { WeeklyPulse } from "@/components/overview/weekly-pulse"
+import { AIInsights } from "@/components/overview/ai-insights"
 
 export default async function Page() {
-  const data = await getTopItems()
+  const response = await fetch("http://127.0.0.1:8080/api/v1/overview", { cache: "no-store" })
+  let overviewData = null
+  try {
+    overviewData = await response.json()
+  } catch (err) {
+    console.error("Failed to parse overview JSON", err)
+  }
+
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <h1 className="font-medium">Top 5 Menu Items</h1>
-        {!data ? (
-          <p>Backend data unavailable.</p>
-        ) : (
-          <>
-            <p>
-              Date range: {data.dateRange.from} to {data.dateRange.to}
-            </p>
-            <ul className="space-y-2">
-              {data.items.map((item) => (
-                <li key={item.id} className="rounded border p-2">
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-muted-foreground">
-                    Revenue: ${item.revenue.toFixed(2)} | Units: {item.unitsSold}{" "}
-                    | Category: {item.performanceCategory}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+    <div className="flex min-h-svh flex-col p-6 max-w-7xl mx-auto w-full">
+      <div className="mb-6">
+        <h1 className="heading-large">Overview</h1>
+        <p className="body-secondary mt-2">The Weekly Briefing</p>
       </div>
+
+      {overviewData ? (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 items-stretch">
+            <div className="lg:col-span-1">
+              <HeroAlert criticalAlert={overviewData.criticalAlert} />
+            </div>
+            <div className="lg:col-span-2">
+              <WeeklyPulse pulse={overviewData.weeklyPulse} />
+            </div>
+          </div>
+
+          <AIInsights insights={overviewData.aiInsights} />
+        </>
+      ) : (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Loading overview data...</p>
+        </div>
+      )}
     </div>
   )
 }
