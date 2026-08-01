@@ -5,7 +5,18 @@ tmp_dir = "tmp"
   cmd = "go build -o ./tmp/main ./cmd/api"
   bin = "./tmp/main"
   delay = 1000
-  exclude_dir = ["assets", "tmp", "vendor", "migrations"]
+
+  exclude_dir = [
+    "assets",
+    "tmp",
+    "vendor",
+    "migrations",
+    "frontend",
+    ".git",
+    "node_modules",
+    "foretaste-dashboard"
+  ]
+
   include_ext = ["go", "tpl", "tmpl", "html"]
   exclude_regex = ["_test.go"]
   log = "build-errors.log"

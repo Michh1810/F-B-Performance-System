@@ -40,11 +40,54 @@ migrate -path migrations -database "postgres://postgres:devpassword@localhost:54
 
 ## Database Connection
 If you want to use a GUI like TablePlus or DBeaver to view the database:
-- **Host:** `localhost`
-- **Port:** `5440`
-- **User:** `postgres`
-- **Password:** `devpassword`
-- **Database:** `fbperformance`
+ - **Host:** `localhost`
+ - **Port:** `5440`
+ - **User:** `postgres`
+ - **Password:** `devpassword`
+ - **Database:** `fbperformance`
+
+---
+
+## 📦 Deployment Guide (Render, Vercel, Neon, Upstash)
+
+The project is containerised and can be deployed to free‑tier cloud services with minimal changes.
+
+### 1. Backend – Render.com (or Fly.io)
+1. **Create a Render account** and add a new *Web Service*.
+2. Connect the repository (GitHub) and select the root `Dockerfile`.
+3. Choose the **Free** plan (3 GB RAM, 2 CPU) and set the **Start Command** to the default (Render will run the container).
+4. In the *Environment* tab, add the following variables (replace placeholders with values from Neon and Upstash):
+   - `DATABASE_URL` – Neon PostgreSQL connection string.
+   - `REDIS_URL` – Upstash Redis URL.
+   - `GEMINI_API_KEY`, `APIFY_API_TOKEN`, `APIFY_ACTOR_ID` – as required by the app.
+5. Save and **Deploy**. Render will build the image and expose it on `https://fbperformance-backend.onrender.com` (or a custom domain).
+
+### 2. Frontend – Vercel
+1. **Sign up on Vercel** and import the repository.
+2. Set the *Root Directory* to `frontend/`.
+3. Vercel automatically detects the Next.js project and uses the `vercel.json` configuration we added.
+4. Add the same environment variables that the frontend needs (e.g., `NEXT_PUBLIC_API_URL` pointing to the Render backend URL, plus any API keys).
+5. Deploy – Vercel will build and serve the app on a generated `*.vercel.app` domain.
+
+### 3. PostgreSQL – Neon (Free Tier)
+See the **neon.md** file for a step‑by‑step guide. In short:
+* Create a Neon project, enable the `pgvector` extension, and copy the connection string.
+* Set `DATABASE_URL` in Render (and locally) to this string.
+* Run migrations: `migrate -path migrations -database "$DATABASE_URL" up`.
+
+### 4. Redis – Upstash (Free Tier)
+See the **upstash.md** file. After creating a Redis instance, add its URL to `REDIS_URL` in `.env.example` and the Render environment.
+
+### 5. Local Development vs Production
+* **Local** – keep using `docker-compose up` which spins up the Go backend, Postgres, and Redis containers.
+* **Production** – the services above replace the Docker containers. No code changes are required; the application reads all configuration from environment variables.
+
+### 6. Optional – Custom Domain
+Both Render and Vercel allow you to attach your own domain via their dashboards. Update the DNS records to point to the provided endpoints.
+
+---
+
+For any further questions, refer to the `neon.md` and `upstash.md` documentation files.
 
 ## TikTok Trend Retrieval
 
