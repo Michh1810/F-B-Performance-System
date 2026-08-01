@@ -3,10 +3,7 @@ import { WeeklyPulse } from "@/components/overview/weekly-pulse"
 import { AIInsights } from "@/components/overview/ai-insights"
 
 export default async function Page() {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-    "http://127.0.0.1:8080"
-
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL!
   const response = await fetch(
     `${baseUrl}/api/v1/overview`,
     { cache: "no-store" }

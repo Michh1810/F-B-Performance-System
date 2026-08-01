@@ -23,8 +23,10 @@ type CloverOrdersResponse = {
 }
 
 async function getCloverOrders(): Promise<CloverOrdersResponse | null> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"
-  
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://127.0.0.1:8080";
+    
   // Fetch from the new Go API route!
   const response = await fetch(`${baseUrl}/api/clover`, {
     cache: "no-store",
