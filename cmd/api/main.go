@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -37,6 +39,8 @@ func main() {
 	if databaseURL == "" {
 		databaseURL = "postgres://postgres:devpassword@localhost:5440/fbperformance?sslmode=disable"
 	}
+
+	logDatabaseTarget(databaseURL)
 
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -119,4 +123,20 @@ func main() {
 
 	log.Printf("listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
+}
+
+func logDatabaseTarget(databaseURL string) {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		log.Printf("database target: unable to parse DATABASE_URL: %v", err)
+		return
+	}
+
+	host := u.Hostname()
+	dbName := strings.TrimPrefix(u.Path, "/")
+	if dbName == "" {
+		dbName = "(empty)"
+	}
+
+	log.Printf("database target: host=%s db=%s", host, dbName)
 }
