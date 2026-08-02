@@ -44,7 +44,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.service.ForecastMenuItems(r.Context(), request.Items)
 	if err != nil {
-		if errors.Is(err, ErrNoHistoricalTransactions) {
+		if errors.Is(err, ErrNoHistoricalTransactions) || errors.Is(err, ErrNoUsableComparableItems) {
 			writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
