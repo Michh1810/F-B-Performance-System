@@ -1,7 +1,9 @@
 services:
   # Go Backend Application
   backend:
-    build: .
+    build:
+      context: .
+      target: dev
     container_name: fbperformance-backend
     ports:
       - "8080:8080"
