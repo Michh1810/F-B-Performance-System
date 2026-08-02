@@ -1,16 +1,7 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/frontend/$1" }
-  ],
   "env": {
-    "NEXT_PUBLIC_API_URL": "${NEXT_PUBLIC_API_URL}",
+    "NEXT_PUBLIC_API_BASE_URL": "${NEXT_PUBLIC_API_BASE_URL}",
     "GEMINI_API_KEY": "${GEMINI_API_KEY}",
     "APIFY_API_TOKEN": "${APIFY_API_TOKEN}",
     "APIFY_ACTOR_ID": "${APIFY_ACTOR_ID}"

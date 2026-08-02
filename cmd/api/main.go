@@ -53,6 +53,8 @@ func main() {
 	}
 	defer pool.Close()
 
+	store.RunMigrations(databaseURL)
+
 	snapshotStore := store.NewTrendSnapshotStore(pool)
 	signalStore := store.NewTrendSignalStore(pool)
 
