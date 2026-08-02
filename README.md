@@ -48,7 +48,7 @@ If you want to use a GUI like TablePlus or DBeaver to view the database:
 
 ---
 
-## 📦 Deployment Guide (Render, Vercel, Neon, Upstash)
+## Deployment Guide (Render, Vercel, Neon, Upstash)
 
 The project is containerised and can be deployed to free‑tier cloud services with minimal changes.
 
@@ -112,3 +112,33 @@ VALUES ('Salted Egg Coffee', 'Beverage', 0, 0, false)
 RETURNING id;
 ```
 A proper creation endpoint is a separate follow-up, not yet built.
+
+## Live Demo & Deployment Status
+
+The application is currently deployed using:
+- Frontend: Vercel (Next.js)
+- Backend: Render (Golang API)
+- Database: Neon PostgreSQL
+- Cache: Upstash Redis
+
+### Live Links
+
+Frontend:
+https://f-b-performance-system-6m7jpdae8-hungbri288s-projects.vercel.app/
+
+Backend API:
+https://f-b-performance-system.onrender.com
+
+Example API endpoints:
+- Overview:
+  https://f-b-performance-system.onrender.com/api/v1/overview
+
+- Performance Dashboard:
+  https://f-b-performance-system.onrender.com/api/v1/performance-dashboard
+
+### Deployment Notes
+
+- The frontend is deployed from the `main` branch of the personal repository.
+- The backend runs as a Dockerized Go service on Render.
+- Production data is stored in Neon PostgreSQL.
+- Local development still uses Docker Compose with PostgreSQL and Redis containers.
