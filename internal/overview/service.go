@@ -40,6 +40,7 @@ func calculateTrend(current, previous float64) (string, bool) {
 func (s *Service) GetOverviewData(ctx context.Context, from, to time.Time) (OverviewResponse, error) {
 	if redisClient := cache.GetClient(); redisClient != nil {
 		cached, err := redisClient.Get(ctx, overviewCacheKey).Result()
+		log.Printf("Redis GET key=%s err=%v len=%d", overviewCacheKey, err, len(cached))
 		if err == nil {
 			var response OverviewResponse
 			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
@@ -157,9 +158,17 @@ func (s *Service) GetOverviewData(ctx context.Context, from, to time.Time) (Over
 	if redisClient := cache.GetClient(); redisClient != nil {
 		payload, marshalErr := json.Marshal(response)
 		if marshalErr == nil {
-			if err := redisClient.Set(ctx, overviewCacheKey, payload, cacheTTL).Err(); err == nil {
-				log.Printf("Redis cache stored: %s", overviewCacheKey)
-			}
+			err := redisClient.Set(ctx, overviewCacheKey, payload, cacheTTL).Err()
+			log.Printf("Redis SET key=%s err=%v", overviewCacheKey, err)
+
+			exists, existsErr := redisClient.Exists(ctx, overviewCacheKey).Result()
+			log.Printf("Redis EXISTS key=%s exists=%d err=%v", overviewCacheKey, exists, existsErr)
+
+			ttl, ttlErr := redisClient.TTL(ctx, overviewCacheKey).Result()
+			log.Printf("Redis TTL key=%s ttl=%v err=%v", overviewCacheKey, ttl, ttlErr)
+
+			value, verifyErr := redisClient.Get(ctx, overviewCacheKey).Result()
+			log.Printf("Redis VERIFY GET key=%s err=%v len=%d", overviewCacheKey, verifyErr, len(value))
 		}
 	}
 

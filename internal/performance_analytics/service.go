@@ -28,6 +28,7 @@ func NewService(repo *Repository) *Service {
 func (s *Service) GetDashboardData(ctx context.Context, from, to time.Time) (SummaryDashboard, error) {
 	if redisClient := cache.GetClient(); redisClient != nil {
 		cached, err := redisClient.Get(ctx, dashboardSummaryCacheKey).Result()
+		log.Printf("Redis GET key=%s err=%v len=%d", dashboardSummaryCacheKey, err, len(cached))
 		if err == nil {
 			var response SummaryDashboard
 			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
@@ -60,9 +61,17 @@ func (s *Service) GetDashboardData(ctx context.Context, from, to time.Time) (Sum
 	if redisClient := cache.GetClient(); redisClient != nil {
 		payload, marshalErr := json.Marshal(response)
 		if marshalErr == nil {
-			if err := redisClient.Set(ctx, dashboardSummaryCacheKey, payload, 5*time.Minute).Err(); err == nil {
-				log.Printf("Redis cache stored: %s", dashboardSummaryCacheKey)
-			}
+			err := redisClient.Set(ctx, dashboardSummaryCacheKey, payload, 5*time.Minute).Err()
+			log.Printf("Redis SET key=%s err=%v", dashboardSummaryCacheKey, err)
+
+			exists, existsErr := redisClient.Exists(ctx, dashboardSummaryCacheKey).Result()
+			log.Printf("Redis EXISTS key=%s exists=%d err=%v", dashboardSummaryCacheKey, exists, existsErr)
+
+			ttl, ttlErr := redisClient.TTL(ctx, dashboardSummaryCacheKey).Result()
+			log.Printf("Redis TTL key=%s ttl=%v err=%v", dashboardSummaryCacheKey, ttl, ttlErr)
+
+			value, verifyErr := redisClient.Get(ctx, dashboardSummaryCacheKey).Result()
+			log.Printf("Redis VERIFY GET key=%s err=%v len=%d", dashboardSummaryCacheKey, verifyErr, len(value))
 		}
 	}
 
@@ -266,6 +275,7 @@ func CalculateRevenueByClass(cloverData *CloverOrderResponse) map[string]float64
 func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Time) (*PerformanceDashboardResponse, error) {
 	if redisClient := cache.GetClient(); redisClient != nil {
 		cached, err := redisClient.Get(ctx, performanceDashboardCacheKey).Result()
+		log.Printf("Redis GET key=%s err=%v len=%d", performanceDashboardCacheKey, err, len(cached))
 		if err == nil {
 			var response PerformanceDashboardResponse
 			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
@@ -395,9 +405,17 @@ func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Tim
 	if redisClient := cache.GetClient(); redisClient != nil {
 		payload, marshalErr := json.Marshal(response)
 		if marshalErr == nil {
-			if err := redisClient.Set(ctx, performanceDashboardCacheKey, payload, 5*time.Minute).Err(); err == nil {
-				log.Printf("Redis cache stored: %s", performanceDashboardCacheKey)
-			}
+			err := redisClient.Set(ctx, performanceDashboardCacheKey, payload, 5*time.Minute).Err()
+			log.Printf("Redis SET key=%s err=%v", performanceDashboardCacheKey, err)
+
+			exists, existsErr := redisClient.Exists(ctx, performanceDashboardCacheKey).Result()
+			log.Printf("Redis EXISTS key=%s exists=%d err=%v", performanceDashboardCacheKey, exists, existsErr)
+
+			ttl, ttlErr := redisClient.TTL(ctx, performanceDashboardCacheKey).Result()
+			log.Printf("Redis TTL key=%s ttl=%v err=%v", performanceDashboardCacheKey, ttl, ttlErr)
+
+			value, verifyErr := redisClient.Get(ctx, performanceDashboardCacheKey).Result()
+			log.Printf("Redis VERIFY GET key=%s err=%v len=%d", performanceDashboardCacheKey, verifyErr, len(value))
 		}
 	}
 

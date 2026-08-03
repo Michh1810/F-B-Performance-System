@@ -25,6 +25,7 @@ func InitializeRedis() {
 
 		var opts *redis.Options
 		var err error
+		configSource := "REDIS_ADDR"
 
 		if redisURL != "" {
 			opts, err = redis.ParseURL(redisURL)
@@ -32,15 +33,21 @@ func InitializeRedis() {
 				log.Printf("Redis unavailable, falling back to database: invalid REDIS_URL: %v", err)
 				return
 			}
+			configSource = "REDIS_URL"
 		} else {
 			opts = &redis.Options{Addr: redisAddr}
 		}
+
+		log.Printf("Redis config source: %s", configSource)
+		log.Printf("Redis config: addr=%s db=%d", opts.Addr, opts.DB)
 
 		client = redis.NewClient(opts)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		if err := client.Ping(ctx).Err(); err != nil {
+		pong, err := client.Ping(ctx).Result()
+		log.Printf("Redis ping: %s err=%v", pong, err)
+		if err != nil {
 			log.Printf("Redis unavailable, falling back to database: %v", err)
 			_ = client.Close()
 			client = nil
