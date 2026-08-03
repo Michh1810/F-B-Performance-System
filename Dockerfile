@@ -1,25 +1,23 @@
-# Use the official Golang image as a development environment
-FROM golang:alpine
+FROM golang:1.25-alpine AS builder
 
-# Set the working directory inside the container
-WORKDIR /app
+WORKDIR /src
 
-# Install system dependencies
-RUN apk update && apk add --no-cache git
+# Install git for module resolution when needed.
+RUN apk add --no-cache git
 
-# Install 'air' for hot-reloading in development
-RUN go install github.com/air-verse/air@latest
+# Cache Go modules first for faster rebuilds.
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Pre-copy/cache go.mod for pre-downloading dependencies and only redownloading them in subsequent builds if they change
-COPY go.mod ./
-# COPY go.sum ./ (Uncomment when you have a go.sum)
-RUN go mod download && go mod verify
-
-# Copy the rest of the application source code
+# Copy source and build the API binary.
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
-# Expose port 8080 for the Go application
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+COPY --from=builder /out/api /app/api
+
 EXPOSE 8080
 
-# Run 'air' for hot-reloading
-CMD ["air", "-c", ".air.toml"]
+ENTRYPOINT ["/app/api"]
