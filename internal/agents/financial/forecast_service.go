@@ -69,6 +69,13 @@ func NewServiceWithDB(db *sql.DB, aiClient *ai.Client) *Service {
 func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequest) (ForecastResponse, error) {
 	results := make([]ForecastResult, 0, len(requests))
 	for _, req := range requests {
+		candidateCategory := ""
+		if s.db != nil {
+			if candidateMeta, err := s.loadMenuItemMeta(ctx, req.ItemID); err == nil {
+				candidateCategory = candidateMeta.Category
+			}
+		}
+
 		transactions := req.HistoricalTransactions
 		var err error
 		if len(transactions) == 0 && s.db != nil {
@@ -85,6 +92,7 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 		baseline := calculateNormalizedDecayAverage(transactions)
 		forecastMode := "own_history"
 		comparablesAssumptions := []map[string]any{}
+		selectedComparables := []comparableCandidate{}
 
 		if s.db != nil && !hasSufficientHistory(summary) {
 			candidateMeta, metaErr := s.loadMenuItemMeta(ctx, req.ItemID)
@@ -105,15 +113,41 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 
 			baseline = weightedBaseline(comparables)
 			forecastMode = "comparable_cold_start"
+			candidateCategory = candidateMeta.Category
 			comparablesAssumptions = comparableAssumptions(comparables)
+			selectedComparables = comparables
 		}
 		multiplier := 1.0
 		aiStatus := "not_configured"
 		if s.aiClient != nil && s.aiClient.IsConfigured() {
 			aiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			m, aiErr := s.aiClient.AdjustBaseline(aiCtx, baseline, map[string]any{
-				"item_id": req.ItemID, "item_name": req.ItemName, "forecast_horizon_days": req.ForecastHorizonDays,
-			})
+			aiInput := ai.AdjustBaselineInput{
+				Candidate: ai.CandidateContext{
+					ItemID:              req.ItemID,
+					ItemName:            req.ItemName,
+					Category:            candidateCategory,
+					PriceCents:          req.PriceCents,
+					EstimatedCOGSCents:  req.EstimatedCOGSCents,
+					ForecastHorizonDays: req.ForecastHorizonDays,
+				},
+				Baseline: ai.BaselineContext{
+					Model:             "normalized_exponential_decay_moving_average",
+					DailyUnits:        baseline,
+					HistoryWindowDays: historyDays,
+					Mode:              forecastMode,
+					NonzeroSalesDays:  summary.NonzeroSalesDays,
+					TotalUnits:        summary.TotalUnits,
+				},
+			}
+			if forecastMode == "comparable_cold_start" {
+				aiInput.Comparable = &ai.ComparableContext{
+					Count:             len(selectedComparables),
+					SyntheticBaseline: baseline,
+					Items:             toComparableItems(selectedComparables),
+				}
+			}
+
+			m, aiErr := s.aiClient.AdjustBaseline(aiCtx, aiInput)
 			cancel()
 			if aiErr == nil {
 				multiplier = m
@@ -162,6 +196,23 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 		results = append(results, fr)
 	}
 	return ForecastResponse{Forecasts: results}, nil
+}
+
+func toComparableItems(candidates []comparableCandidate) []ai.ComparableItem {
+	items := make([]ai.ComparableItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		items = append(items, ai.ComparableItem{
+			Name:             candidate.Name,
+			Category:         candidate.Category,
+			Baseline:         candidate.Baseline,
+			SimilarityScore:  candidate.Score,
+			Weight:           candidate.Weight,
+			NonzeroSalesDays: candidate.NonzeroSalesDays,
+			TotalUnits:       candidate.TotalUnits,
+			Stage:            candidate.Stage,
+		})
+	}
+	return items
 }
 
 // loadDailyTransactionHistory returns one total quantity per day, newest first.
