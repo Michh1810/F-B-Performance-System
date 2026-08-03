@@ -1,23 +1,23 @@
-FROM golang:1.25-alpine AS base
-WORKDIR /app
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+
+# Install git for module resolution when needed.
 RUN apk add --no-cache git
+
+# Cache Go modules first for faster rebuilds.
 COPY go.mod go.sum ./
 RUN go mod download
 
-FROM base AS dev
-RUN go install github.com/air-verse/air@latest
+# Copy source and build the API binary.
 COPY . .
-EXPOSE 8080
-CMD ["air", "-c", ".air.toml"]
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
-FROM base AS builder
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/api ./cmd/api
+FROM gcr.io/distroless/static-debian12:nonroot
 
-FROM alpine:3.21 AS prod
 WORKDIR /app
-RUN apk add --no-cache ca-certificates
-COPY --from=builder /app/bin/api /app/api
-COPY migrations /app/migrations
+COPY --from=builder /out/api /app/api
+
 EXPOSE 8080
-CMD ["/app/api"]
+
+ENTRYPOINT ["/app/api"]
