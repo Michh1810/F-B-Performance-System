@@ -21,6 +21,7 @@ import (
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/ai"
+	"fbperformance/internal/cache"
 	"fbperformance/internal/config"
 	"fbperformance/internal/demand_forecast"
 	"fbperformance/internal/handlers"
@@ -34,6 +35,7 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+	cache.InitializeRedis()
 
 	databaseURL := cfg.DatabaseURL
 	if databaseURL == "" {

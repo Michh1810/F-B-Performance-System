@@ -11,6 +11,7 @@ services:
       - .:/app
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_ADDR=redis:6379
       - CLOVER_DEV_API_KEY=${CLOVER_DEV_API_KEY}
       - CLOVER_MERCHANT_MID=${CLOVER_MERCHANT_MID}
       - YELP_REVIEW_API_KEY=${YELP_REVIEW_API_KEY}

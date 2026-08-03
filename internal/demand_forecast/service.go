@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fbperformance/internal/ai"
+	"fbperformance/internal/cache"
 )
 
 const historyDays = 30
@@ -124,6 +125,9 @@ func (s *Service) persistForecast(ctx context.Context, fr ForecastResult, priceC
 	) VALUES ($1,$2,$3,$4,$5,$6::numeric / 100,$7::numeric / 100,$8::numeric / 100,$9::numeric / 100,$10,NOW())`, fr.ItemID, fr.Model,
 		fr.BaselineUnits, fr.ForecastedUnits, fr.ForecastWindowDays, priceCents, estimatedCOGSCents,
 		fr.ForecastedRevenueCents, fr.ProjectedProfitCents, assumptions)
+	if err == nil {
+		cache.InvalidateAnalyticsCache(ctx)
+	}
 	return err
 }
 

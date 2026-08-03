@@ -4,26 +4,49 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"fbperformance/internal/cache"
 )
 
 type Service struct {
 	repo *Repository
 }
 
+const (
+	performanceDashboardCacheKey = "performance_dashboard"
+	dashboardSummaryCacheKey     = "dashboard_summary"
+)
+
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
 func (s *Service) GetDashboardData(ctx context.Context, from, to time.Time) (SummaryDashboard, error) {
+	if redisClient := cache.GetClient(); redisClient != nil {
+		cached, err := redisClient.Get(ctx, dashboardSummaryCacheKey).Result()
+		if err == nil {
+			var response SummaryDashboard
+			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
+				log.Printf("Redis cache hit: %s", dashboardSummaryCacheKey)
+				return response, nil
+			}
+		} else {
+			log.Printf("Redis cache miss: %s", dashboardSummaryCacheKey)
+		}
+	} else {
+		log.Printf("Redis unavailable, falling back to database")
+	}
+
 	summary, err := s.repo.GetSummary(ctx, from, to)
 	if err != nil {
 		return SummaryDashboard{}, err
 	}
 
-	return SummaryDashboard{
+	response := SummaryDashboard{
 		DateRange: DateRangeConfig{
 			StartDate: from,
 			EndDate:   to.Add(-time.Nanosecond),
@@ -32,7 +55,18 @@ func (s *Service) GetDashboardData(ctx context.Context, from, to time.Time) (Sum
 		AverageRating:       summary.averageRating,
 		AverageProfitMargin: summary.averageProfitMargin,
 		TotalReviews:        int(summary.totalReviews),
-	}, nil
+	}
+
+	if redisClient := cache.GetClient(); redisClient != nil {
+		payload, marshalErr := json.Marshal(response)
+		if marshalErr == nil {
+			if err := redisClient.Set(ctx, dashboardSummaryCacheKey, payload, 5*time.Minute).Err(); err == nil {
+				log.Printf("Redis cache stored: %s", dashboardSummaryCacheKey)
+			}
+		}
+	}
+
+	return response, nil
 }
 
 func (s *Service) GetMenuItems(
@@ -230,6 +264,21 @@ func CalculateRevenueByClass(cloverData *CloverOrderResponse) map[string]float64
 
 // GetPerformanceDashboard orchestrates Clover and Postgres data for the dashboard
 func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Time) (*PerformanceDashboardResponse, error) {
+	if redisClient := cache.GetClient(); redisClient != nil {
+		cached, err := redisClient.Get(ctx, performanceDashboardCacheKey).Result()
+		if err == nil {
+			var response PerformanceDashboardResponse
+			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
+				log.Printf("Redis cache hit: %s", performanceDashboardCacheKey)
+				return &response, nil
+			}
+		} else {
+			log.Printf("Redis cache miss: %s", performanceDashboardCacheKey)
+		}
+	} else {
+		log.Printf("Redis unavailable, falling back to database")
+	}
+
 	// Calculate Previous Period Dates
 	window := to.Sub(from)
 	previousTo := from
@@ -329,7 +378,7 @@ func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Tim
 	}
 
 	// Return the aggregated data
-	return &PerformanceDashboardResponse{
+	response := &PerformanceDashboardResponse{
 		KPIs: MacroKPIs{
 			NetSales:          KPIMetric{Value: netSales, Trend: netSalesTrend},
 			OrderTraffic:      KPIMetric{Value: float64(orderCount), Trend: ordersTrend},
@@ -341,5 +390,16 @@ func (s *Service) GetPerformanceDashboard(ctx context.Context, from, to time.Tim
 		},
 		RevenueClasses: revenueClasses,
 		MasterTable:    masterTable,
-	}, nil
+	}
+
+	if redisClient := cache.GetClient(); redisClient != nil {
+		payload, marshalErr := json.Marshal(response)
+		if marshalErr == nil {
+			if err := redisClient.Set(ctx, performanceDashboardCacheKey, payload, 5*time.Minute).Err(); err == nil {
+				log.Printf("Redis cache stored: %s", performanceDashboardCacheKey)
+			}
+		}
+	}
+
+	return response, nil
 }
