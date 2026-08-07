@@ -12,10 +12,11 @@ import (
 type Service struct {
 	repo      *Repository
 	llmClient *llm.Client
+	model     string
 }
 
-func NewService(repo *Repository, llmClient *llm.Client) *Service {
-	return &Service{repo: repo, llmClient: llmClient}
+func NewService(repo *Repository, llmClient *llm.Client, model string) *Service {
+	return &Service{repo: repo, llmClient: llmClient, model: model}
 }
 
 func calculateTrend(current, previous float64) (string, bool) {
@@ -117,6 +118,13 @@ func (s *Service) GetOverviewData(ctx context.Context, from, to time.Time) (Over
 				Message: fmt.Sprintf("Total revenue spiked %.1f%% this period! Ensure inventory and staffing can keep up.", change),
 			}
 		}
+	} else if current.TotalRevenue > 0 && previous.TotalRevenue == 0 {
+		criticalAlert = &CriticalAlert{
+			Active:  true,
+			Type:    "warning",
+			Title:   "Baseline Data Collection",
+			Message: "You have less than 30 days of historical data. We are tracking your current revenue and will begin generating critical alerts once enough comparative data is established.",
+		}
 	}
 
 	// Generate AI Insights
@@ -160,8 +168,7 @@ Do not include any markdown formatting or extra text, just the raw JSON array.
 		JSONMode:     true,
 	}
 	
-	// Assuming gemini-2.5-flash for speed
-	resp, err := s.llmClient.Generate(ctx, "gemini-2.5-flash", prompt, opts)
+	resp, err := s.llmClient.Generate(ctx, s.model, prompt, opts)
 	if err != nil {
 		return nil, err
 	}
