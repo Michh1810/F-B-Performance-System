@@ -38,23 +38,30 @@ CREATE TABLE google_reviews (
 );
 
 
-CREATE TABLE all_reviews (
-    review_id VARCHAR(255) NOT NULL, -- Use Yelp's ID or Google's ID
-    source VARCHAR(22) NOT NULL,        -- Strictly 'google' or 'yelp'
-
-    star SMALLINT NOT NULL CHECK (star >= 1 AND star <= 5),
-    review_text TEXT,
-    published_date DATE NOT NULL,
-    
-    yelp_user_id VARCHAR(22),
-    yelp_business_id VARCHAR(255),
-    
-    -- Google-specific columns (Must allow NULLs)
-    google_author_name VARCHAR(255),
-    google_review_count INT,
-
-    PRIMARY KEY (source, review_id)
-);
+CREATE OR REPLACE VIEW all_reviews AS
+SELECT 
+    review_id,
+    source,
+    star,
+    review_text,
+    review_date AS published_date,
+    NULL AS yelp_user_id,
+    NULL AS yelp_business_id,
+    author_name AS google_author_name,
+    review_count AS google_review_count
+FROM google_reviews
+UNION ALL
+SELECT 
+    review_id,
+    source,
+    star,
+    review_text,
+    review_date AS published_date,
+    user_id AS yelp_user_id,
+    business_id AS yelp_business_id,
+    NULL AS google_author_name,
+    NULL AS google_review_count
+FROM yelp_reviews;
 
 
 

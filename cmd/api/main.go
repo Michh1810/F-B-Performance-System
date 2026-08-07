@@ -101,7 +101,7 @@ func main() {
 	analyticsHandler := performance_analytics.NewHandler(analyticsService)
 
 	overviewRepo := overview.NewRepository(pool)
-	overviewService := overview.NewService(overviewRepo, llmClient)
+	overviewService := overview.NewService(overviewRepo, llmClient, cfg.GeminiModel)
 	overviewHandler := overview.NewHandler(overviewService)
 
 	port := cfg.Port
