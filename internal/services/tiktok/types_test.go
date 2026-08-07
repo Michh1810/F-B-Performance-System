@@ -80,3 +80,39 @@ func TestToVideo_MissingCreateTime(t *testing.T) {
 		t.Fatalf("expected zero PostedAt for missing createTimeISO, got %v", got.PostedAt)
 	}
 }
+
+// commentFixture is a real (anonymized) shape of one item in the actor's
+// comments dataset, captured from a live run with commentsPerPost set —
+// this shape isn't documented on the actor's public store page.
+const commentFixture = `[
+	{
+		"videoWebUrl": "https://www.tiktok.com/@chefjordan/video/7123456789012345678",
+		"cid": "7200000000000000001",
+		"text": "this looks amazing, recipe please!",
+		"diggCount": 42,
+		"uniqueId": "hungryhannah",
+		"createTimeISO": "2026-07-19T09:00:00.000Z"
+	}
+]`
+
+func TestToComment(t *testing.T) {
+	var items []apifyCommentItem
+	if err := json.Unmarshal([]byte(commentFixture), &items); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+
+	got := items[0].toComment()
+
+	wantPostedAt, err := time.Parse(time.RFC3339, "2026-07-19T09:00:00.000Z")
+	if err != nil {
+		t.Fatalf("parse expected time: %v", err)
+	}
+
+	if got.ID != "7200000000000000001" || got.Text != "this looks amazing, recipe please!" ||
+		got.DiggCount != 42 || got.AuthorUsername != "hungryhannah" || !got.PostedAt.Equal(wantPostedAt) {
+		t.Fatalf("toComment() = %+v, want matching the fixture", got)
+	}
+}

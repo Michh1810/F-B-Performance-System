@@ -7,13 +7,11 @@ import (
 )
 
 // Request is the client-supplied context for a menu item decision:
-// MenuItemID identifies the item for TikTok trend lookup (see trend
-// package), and FinancialData is the raw financial/sales signal the
-// Financial Agent analyzes.
+// MenuItemID identifies the item for both the TikTok trend lookup (see
+// trend package) and the Financial Agent's demand forecast.
 type Request struct {
-	MenuItemID    uuid.UUID `json:"menu_item_id"`
-	ItemName      string    `json:"item_name"`
-	FinancialData string    `json:"financial_data"`
+	MenuItemID uuid.UUID `json:"menu_item_id"`
+	ItemName   string    `json:"item_name"`
 }
 
 // Response is the synthesized output of the multi-agent pipeline: the

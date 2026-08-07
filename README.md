@@ -62,6 +62,8 @@ Requires `DATABASE_URL`, `GEMINI_API_KEY`, and `APIFY_API_TOKEN` set (see `.env.
 
 This binary is **not self-scheduling** — run it periodically (e.g. daily) via an external scheduler (cron, a Kubernetes `CronJob`, etc.). The scheduler is responsible for preventing overlapping runs (e.g. `flock` around a cron entry, or `concurrencyPolicy: Forbid` on a `CronJob`) — the binary itself has no lock against concurrent invocations. Overlapping runs don't corrupt data, they just double Apify/Gemini spend.
 
+**Seeding a menu to test the pipeline against**: there's no seed data checked into the repo. `go run ./cmd/seed-dev` inserts a small menu (a handful of items across Entree/Beverage/Appetizer) plus 45 days of randomized transaction history per item — some trending up, some flat, some declining — so the Financial Agent's demand forecast has something real to compute over. It's safe to re-run; it skips items that already exist by name and prints their `id`s to use as `menu_item_id`.
+
 **Evaluating a hypothetical (not-yet-sold) item**: `/recommendation` requires a real `menu_items` row to exist (its `id` is the request's `menu_item_id`, a foreign key on `trend_snapshots`). There's currently no API endpoint to create one — insert a "candidate" row manually:
 ```sql
 INSERT INTO menu_items (name, category, current_price, cogs, is_active)

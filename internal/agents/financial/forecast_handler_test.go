@@ -1,4 +1,4 @@
-package demand_forecast
+package financial
 
 import (
 	"net/http"

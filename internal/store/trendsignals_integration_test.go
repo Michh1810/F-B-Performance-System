@@ -48,7 +48,12 @@ func TestSearchSimilar_OrderAndCutoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer pool.Close()
+	// Registered before the fixture-delete Cleanup below so it runs after
+	// it (Cleanup is LIFO) — a plain `defer pool.Close()` would run before
+	// any t.Cleanup func, since Cleanup fires only after the test function
+	// (and its own defers) have already returned, closing the pool out
+	// from under the delete and silently no-oping it.
+	t.Cleanup(func() { pool.Close() })
 
 	signalStore := NewTrendSignalStore(pool)
 	now := time.Now().UTC()
@@ -63,12 +68,14 @@ func TestSearchSimilar_OrderAndCutoff(t *testing.T) {
 	}
 	for _, f := range fixtures {
 		err := signalStore.Upsert(ctx, trend.Signal{
-			Source:     "integration-test",
-			ExternalID: f.externalID,
-			Caption:    "fixture",
-			Hashtags:   []string{"fixture"},
-			ViewCount:  1,
-			PostedAt:   now,
+			Source:      "integration-test",
+			ExternalID:  f.externalID,
+			Caption:     "fixture",
+			Hashtags:    []string{"fixture"},
+			ViewCount:   1,
+			PostedAt:    now,
+			URL:         "https://www.tiktok.com/@mockuser/video/" + f.externalID,
+			TopComments: []trend.Comment{{Text: "great video", DiggCount: 12}},
 		}, f.embedding)
 		if err != nil {
 			t.Fatalf("upsert fixture %s: %v", f.externalID, err)
@@ -97,5 +104,16 @@ func TestSearchSimilar_OrderAndCutoff(t *testing.T) {
 	}
 	if got[0] != "integration-test-close" || got[1] != "integration-test-mid" {
 		t.Fatalf("expected [close mid] ordered by similarity, got %v", got)
+	}
+	for _, r := range results {
+		if r.ExternalID != "integration-test-close" {
+			continue
+		}
+		if r.URL != "https://www.tiktok.com/@mockuser/video/integration-test-close" {
+			t.Fatalf("URL = %q, want the fixture's video_url round-tripped through the query", r.URL)
+		}
+		if len(r.TopComments) != 1 || r.TopComments[0].Text != "great video" || r.TopComments[0].DiggCount != 12 {
+			t.Fatalf("TopComments = %+v, want the fixture's comment round-tripped through JSONB", r.TopComments)
+		}
 	}
 }

@@ -48,14 +48,23 @@ func main() {
 	defer pool.Close()
 
 	signalStore := store.NewTrendSignalStore(pool)
+	hashtagSuggestionStore := store.NewTrendHashtagSuggestionStore(pool)
 	tiktokClient := tiktok.NewClient(cfg.ApifyAPIToken, cfg.ApifyActorID)
 	llmClient := llm.NewClient(cfg.GeminiAPIKey)
 
-	log.Printf("trend-ingest: sweeping %d hashtags", len(cfg.TrendIngestHashtags))
+	hashtags := cfg.TrendIngestHashtags
+	if approved, err := hashtagSuggestionStore.LatestApproved(ctx); err != nil {
+		log.Printf("trend-ingest: load approved hashtags: %v (falling back to configured default)", err)
+	} else if len(approved) > 0 {
+		hashtags = approved
+		log.Printf("trend-ingest: using %d approved hashtags from the restaurant-profile workflow", len(hashtags))
+	}
+
+	log.Printf("trend-ingest: sweeping %d hashtags", len(hashtags))
 
 	sem := make(chan struct{}, ingestConcurrency)
 	var wg sync.WaitGroup
-	for _, hashtag := range cfg.TrendIngestHashtags {
+	for _, hashtag := range hashtags {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -99,6 +108,8 @@ func sweepHashtag(ctx context.Context, tiktokClient *tiktok.Client, llmClient *l
 			CommentCount: video.CommentCount,
 			ShareCount:   video.ShareCount,
 			PostedAt:     video.PostedAt,
+			URL:          video.URL,
+			TopComments:  toTopComments(video.Comments),
 		}
 		if err := signalStore.Upsert(ctx, signal, embedding); err != nil {
 			log.Printf("trend-ingest: hashtag #%s: upsert video %s: %v", hashtag, video.ID, err)
@@ -108,4 +119,16 @@ func sweepHashtag(ctx context.Context, tiktokClient *tiktok.Client, llmClient *l
 	}
 
 	log.Printf("trend-ingest: hashtag #%s: %d/%d videos upserted (%s)", hashtag, upserted, len(videos), time.Since(start).Round(time.Second))
+}
+
+// toTopComments converts tiktok.Comment (the ingestion client's DTO) into
+// trend.Comment (the corpus's DTO) — kept as separate types so the trend
+// package doesn't depend on the tiktok package, same reasoning as
+// trend.Signal not reusing tiktok.Video.
+func toTopComments(comments []tiktok.Comment) []trend.Comment {
+	out := make([]trend.Comment, len(comments))
+	for i, c := range comments {
+		out[i] = trend.Comment{Text: c.Text, DiggCount: c.DiggCount}
+	}
+	return out
 }

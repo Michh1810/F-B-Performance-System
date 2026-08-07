@@ -45,10 +45,25 @@ func (noopSignalSearcher) SearchSimilar(ctx context.Context, embedding []float32
 	return nil, nil
 }
 
+// noopMenuItemLookup/noopForecaster satisfy financial.MenuItemLookup/
+// financial.Forecaster for the same reason — never invoked by these
+// validation-path tests.
+type noopMenuItemLookup struct{}
+
+func (noopMenuItemLookup) Get(ctx context.Context, id uuid.UUID) (financial.MenuItem, error) {
+	return financial.MenuItem{}, nil
+}
+
+type noopForecaster struct{}
+
+func (noopForecaster) ForecastMenuItems(ctx context.Context, requests []financial.ForecastRequest) (financial.ForecastResponse, error) {
+	return financial.ForecastResponse{}, nil
+}
+
 func newTestHandler() *RecommendationHandler {
 	llmClient := llm.NewClient("")
 	trendAgent := trend.NewAgent(llmClient, noopEmbedder{}, noopSignalSearcher{}, noopSnapshotStore{}, "test-model", "embed-model", 30)
-	financialAgent := financial.NewAgent(llmClient, "test-model")
+	financialAgent := financial.NewAgent(llmClient, "test-model", noopMenuItemLookup{}, noopForecaster{})
 	managerAgent := manager.NewAgent(llmClient, "test-model")
 	o := orchestrator.New(trendAgent, financialAgent, managerAgent)
 	return NewRecommendationHandler(o)

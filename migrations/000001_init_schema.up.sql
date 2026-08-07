@@ -39,7 +39,7 @@ CREATE TABLE google_reviews (
 
 
 CREATE TABLE all_reviews (
-    review_id VARCHAR(255), -- Use Yelp's ID or Google's ID
+    review_id VARCHAR(255) NOT NULL, -- Use Yelp's ID or Google's ID
     source VARCHAR(22) NOT NULL,        -- Strictly 'google' or 'yelp'
 
     star SMALLINT NOT NULL CHECK (star >= 1 AND star <= 5),
