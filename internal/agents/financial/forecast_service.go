@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"fbperformance/internal/ai"
@@ -14,7 +15,44 @@ import (
 
 const historyDays = 30
 
+const (
+	minNonzeroSalesDays     = 3
+	minComparableItems      = 2
+	maxComparableItems      = 5
+	priceSimilarityWeight   = 0.60
+	cogsSimilarityWeight    = 0.40
+	categoryFallbackPenalty = 0.85
+	maxRelativeDifference   = 2.0
+	similarityScoreFloor    = 1e-9
+	minimumPositiveBaseline = 0
+)
+
 var ErrNoHistoricalTransactions = errors.New("no historical transactions available for forecast")
+var ErrNoUsableComparableItems = errors.New("no usable comparable menu items available for cold-start forecast")
+
+type menuItemMeta struct {
+	ID                 string
+	Name               string
+	Category           string
+	PriceCents         int64
+	EstimatedCOGSCents int64
+	IsActive           bool
+}
+
+type comparableCandidate struct {
+	menuItemMeta
+	NonzeroSalesDays int
+	TotalUnits       int64
+	Baseline         float64
+	Score            float64
+	Weight           float64
+	Stage            string
+}
+
+type historySummary struct {
+	NonzeroSalesDays int
+	TotalUnits       int64
+}
 
 // Service forecasts daily sales with a normalized exponential-decay moving average.
 type Service struct {
@@ -31,6 +69,13 @@ func NewServiceWithDB(db *sql.DB, aiClient *ai.Client) *Service {
 func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequest) (ForecastResponse, error) {
 	results := make([]ForecastResult, 0, len(requests))
 	for _, req := range requests {
+		candidateCategory := ""
+		if s.db != nil {
+			if candidateMeta, err := s.loadMenuItemMeta(ctx, req.ItemID); err == nil {
+				candidateCategory = candidateMeta.Category
+			}
+		}
+
 		transactions := req.HistoricalTransactions
 		var err error
 		if len(transactions) == 0 && s.db != nil {
@@ -43,14 +88,66 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 			return ForecastResponse{}, fmt.Errorf("%w for item %s", ErrNoHistoricalTransactions, req.ItemID)
 		}
 
+		summary := summarizeHistory(transactions)
 		baseline := calculateNormalizedDecayAverage(transactions)
+		forecastMode := "own_history"
+		comparablesAssumptions := []map[string]any{}
+		selectedComparables := []comparableCandidate{}
+
+		if s.db != nil && !hasSufficientHistory(summary) {
+			candidateMeta, metaErr := s.loadMenuItemMeta(ctx, req.ItemID)
+			if metaErr != nil {
+				if errors.Is(metaErr, sql.ErrNoRows) {
+					return ForecastResponse{}, fmt.Errorf("candidate menu item %s not found: %w", req.ItemID, metaErr)
+				}
+				return ForecastResponse{}, metaErr
+			}
+
+			comparables, compErr := s.selectComparables(ctx, candidateMeta, req.PriceCents, req.EstimatedCOGSCents)
+			if compErr != nil {
+				if errors.Is(compErr, ErrNoUsableComparableItems) {
+					return ForecastResponse{}, fmt.Errorf("%w for item %s", ErrNoUsableComparableItems, req.ItemID)
+				}
+				return ForecastResponse{}, compErr
+			}
+
+			baseline = weightedBaseline(comparables)
+			forecastMode = "comparable_cold_start"
+			candidateCategory = candidateMeta.Category
+			comparablesAssumptions = comparableAssumptions(comparables)
+			selectedComparables = comparables
+		}
 		multiplier := 1.0
 		aiStatus := "not_configured"
 		if s.aiClient != nil && s.aiClient.IsConfigured() {
 			aiCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			m, aiErr := s.aiClient.AdjustBaseline(aiCtx, baseline, map[string]any{
-				"item_id": req.ItemID, "item_name": req.ItemName, "forecast_horizon_days": req.ForecastHorizonDays,
-			})
+			aiInput := ai.AdjustBaselineInput{
+				Candidate: ai.CandidateContext{
+					ItemID:              req.ItemID,
+					ItemName:            req.ItemName,
+					Category:            candidateCategory,
+					PriceCents:          req.PriceCents,
+					EstimatedCOGSCents:  req.EstimatedCOGSCents,
+					ForecastHorizonDays: req.ForecastHorizonDays,
+				},
+				Baseline: ai.BaselineContext{
+					Model:             "normalized_exponential_decay_moving_average",
+					DailyUnits:        baseline,
+					HistoryWindowDays: historyDays,
+					Mode:              forecastMode,
+					NonzeroSalesDays:  summary.NonzeroSalesDays,
+					TotalUnits:        summary.TotalUnits,
+				},
+			}
+			if forecastMode == "comparable_cold_start" {
+				aiInput.Comparable = &ai.ComparableContext{
+					Count:             len(selectedComparables),
+					SyntheticBaseline: baseline,
+					Items:             toComparableItems(selectedComparables),
+				}
+			}
+
+			m, aiErr := s.aiClient.AdjustBaseline(aiCtx, aiInput)
 			cancel()
 			if aiErr == nil {
 				multiplier = m
@@ -71,9 +168,26 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 			AIAdjustmentStatus: aiStatus,
 		}
 
+		assumptions := map[string]any{
+			"ai_multiplier":          multiplier,
+			"ai_adjustment_status":   fr.AIAdjustmentStatus,
+			"baseline_unit":          "daily_units",
+			"history_days":           historyDays,
+			"forecast_mode":          forecastMode,
+			"candidate_total_units":  summary.TotalUnits,
+			"candidate_nonzero_days": summary.NonzeroSalesDays,
+		}
+		if forecastMode == "comparable_cold_start" {
+			assumptions["min_nonzero_sales_days"] = minNonzeroSalesDays
+			assumptions["min_comparables"] = minComparableItems
+			assumptions["max_comparables"] = maxComparableItems
+			assumptions["comparables"] = comparablesAssumptions
+			assumptions["synthetic_baseline"] = baseline
+		}
+
 		if s.db != nil {
 			persistCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			err = s.persistForecast(persistCtx, fr, req.PriceCents, req.EstimatedCOGSCents, multiplier)
+			err = s.persistForecast(persistCtx, fr, req.PriceCents, req.EstimatedCOGSCents, assumptions)
 			cancel()
 			if err != nil {
 				return ForecastResponse{}, fmt.Errorf("persist forecast for item %s: %w", req.ItemID, err)
@@ -82,6 +196,23 @@ func (s *Service) ForecastMenuItems(ctx context.Context, requests []ForecastRequ
 		results = append(results, fr)
 	}
 	return ForecastResponse{Forecasts: results}, nil
+}
+
+func toComparableItems(candidates []comparableCandidate) []ai.ComparableItem {
+	items := make([]ai.ComparableItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		items = append(items, ai.ComparableItem{
+			Name:             candidate.Name,
+			Category:         candidate.Category,
+			Baseline:         candidate.Baseline,
+			SimilarityScore:  candidate.Score,
+			Weight:           candidate.Weight,
+			NonzeroSalesDays: candidate.NonzeroSalesDays,
+			TotalUnits:       candidate.TotalUnits,
+			Stage:            candidate.Stage,
+		})
+	}
+	return items
 }
 
 // loadDailyTransactionHistory returns one total quantity per day, newest first.
@@ -113,8 +244,8 @@ func (s *Service) loadDailyTransactionHistory(ctx context.Context, itemID string
 	return transactions, rows.Err()
 }
 
-func (s *Service) persistForecast(ctx context.Context, fr ForecastResult, priceCents, estimatedCOGSCents int64, multiplier float64) error {
-	assumptions, err := json.Marshal(map[string]any{"ai_multiplier": multiplier, "ai_adjustment_status": fr.AIAdjustmentStatus, "baseline_unit": "daily_units", "history_days": historyDays})
+func (s *Service) persistForecast(ctx context.Context, fr ForecastResult, priceCents, estimatedCOGSCents int64, assumptionsData map[string]any) error {
+	assumptions, err := json.Marshal(assumptionsData)
 	if err != nil {
 		return err
 	}
@@ -125,6 +256,244 @@ func (s *Service) persistForecast(ctx context.Context, fr ForecastResult, priceC
 		fr.BaselineUnits, fr.ForecastedUnits, fr.ForecastWindowDays, priceCents, estimatedCOGSCents,
 		fr.ForecastedRevenueCents, fr.ProjectedProfitCents, assumptions)
 	return err
+}
+
+func summarizeHistory(transactions []TransactionHistory) historySummary {
+	summary := historySummary{}
+	for _, transaction := range transactions {
+		if transaction.Quantity > 0 {
+			summary.NonzeroSalesDays++
+			summary.TotalUnits += transaction.Quantity
+		}
+	}
+	return summary
+}
+
+func hasSufficientHistory(summary historySummary) bool {
+	return summary.NonzeroSalesDays >= minNonzeroSalesDays && summary.TotalUnits > 0
+}
+
+func (s *Service) loadMenuItemMeta(ctx context.Context, itemID string) (menuItemMeta, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var meta menuItemMeta
+	var priceDollars, cogsDollars float64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id::text, name, category, current_price, cogs, is_active
+		FROM menu_items
+		WHERE id = $1`, itemID,
+	).Scan(&meta.ID, &meta.Name, &meta.Category, &priceDollars, &cogsDollars, &meta.IsActive)
+	if err != nil {
+		return menuItemMeta{}, err
+	}
+
+	meta.PriceCents = int64(math.Round(priceDollars * 100))
+	meta.EstimatedCOGSCents = int64(math.Round(cogsDollars * 100))
+	return meta, nil
+}
+
+func (s *Service) listComparableCandidates(ctx context.Context, candidateID, candidateCategory string, sameCategoryOnly bool) ([]menuItemMeta, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id::text, name, category, current_price, cogs, is_active
+		FROM menu_items
+		WHERE is_active = true
+		  AND id != $1`
+	args := []any{candidateID}
+	if sameCategoryOnly {
+		query += ` AND category = $2`
+		args = append(args, candidateCategory)
+	}
+	query += ` ORDER BY name, id`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candidates := make([]menuItemMeta, 0)
+	for rows.Next() {
+		var candidate menuItemMeta
+		var priceDollars, cogsDollars float64
+		if err := rows.Scan(&candidate.ID, &candidate.Name, &candidate.Category, &priceDollars, &cogsDollars, &candidate.IsActive); err != nil {
+			return nil, err
+		}
+		candidate.PriceCents = int64(math.Round(priceDollars * 100))
+		candidate.EstimatedCOGSCents = int64(math.Round(cogsDollars * 100))
+		candidates = append(candidates, candidate)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
+func (s *Service) selectComparables(ctx context.Context, candidate menuItemMeta, candidatePriceCents, candidateCOGSCents int64) ([]comparableCandidate, error) {
+	sameCategoryCandidates, err := s.listComparableCandidates(ctx, candidate.ID, candidate.Category, true)
+	if err != nil {
+		return nil, err
+	}
+
+	stageA, err := s.buildUsableComparables(ctx, sameCategoryCandidates, candidate, candidatePriceCents, candidateCOGSCents, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(stageA) >= minComparableItems {
+		selected := stageA
+		if len(selected) > maxComparableItems {
+			selected = selected[:maxComparableItems]
+		}
+		normalizeWeights(selected)
+		return selected, nil
+	}
+
+	allCandidates, err := s.listComparableCandidates(ctx, candidate.ID, candidate.Category, false)
+	if err != nil {
+		return nil, err
+	}
+
+	stageB, err := s.buildUsableComparables(ctx, allCandidates, candidate, candidatePriceCents, candidateCOGSCents, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(stageB) == 0 {
+		return nil, ErrNoUsableComparableItems
+	}
+
+	selected := stageB
+	if len(selected) > maxComparableItems {
+		selected = selected[:maxComparableItems]
+	}
+	normalizeWeights(selected)
+	return selected, nil
+}
+
+func (s *Service) buildUsableComparables(ctx context.Context, candidates []menuItemMeta, candidate menuItemMeta, candidatePriceCents, candidateCOGSCents int64, sameCategoryStage bool) ([]comparableCandidate, error) {
+	usable := make([]comparableCandidate, 0, len(candidates))
+	for _, candidateItem := range candidates {
+		history, err := s.loadDailyTransactionHistory(ctx, candidateItem.ID, historyDays)
+		if err != nil {
+			continue
+		}
+		historyStats := summarizeHistory(history)
+		if !hasSufficientHistory(historyStats) {
+			continue
+		}
+		baseline := calculateNormalizedDecayAverage(history)
+		if baseline <= minimumPositiveBaseline {
+			continue
+		}
+
+		score := combinedSimilarityScore(candidatePriceCents, candidateCOGSCents, candidate, candidateItem, sameCategoryStage)
+		stage := "same_category"
+		if !sameCategoryStage {
+			stage = "cross_category_fallback"
+		}
+		usable = append(usable, comparableCandidate{
+			menuItemMeta:     candidateItem,
+			NonzeroSalesDays: historyStats.NonzeroSalesDays,
+			TotalUnits:       historyStats.TotalUnits,
+			Baseline:         baseline,
+			Score:            score,
+			Stage:            stage,
+		})
+	}
+
+	sortComparables(usable)
+	return usable, nil
+}
+
+func sortComparables(candidates []comparableCandidate) {
+	sort.Slice(candidates, func(i, j int) bool {
+		left := candidates[i]
+		right := candidates[j]
+		if left.Score != right.Score {
+			return left.Score > right.Score
+		}
+		if left.NonzeroSalesDays != right.NonzeroSalesDays {
+			return left.NonzeroSalesDays > right.NonzeroSalesDays
+		}
+		if left.Baseline != right.Baseline {
+			return left.Baseline > right.Baseline
+		}
+		return left.ID < right.ID
+	})
+}
+
+func clampRelativeDifference(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > maxRelativeDifference {
+		return maxRelativeDifference
+	}
+	return value
+}
+
+func relativeSimilarity(candidateValue, comparableValue int64) float64 {
+	denominator := math.Max(float64(candidateValue), 1)
+	diff := math.Abs(float64(comparableValue-candidateValue)) / denominator
+	diff = clampRelativeDifference(diff)
+	return 1.0 / (1.0 + diff)
+}
+
+func combinedSimilarityScore(candidatePriceCents, candidateCOGSCents int64, candidate, comparable menuItemMeta, sameCategoryStage bool) float64 {
+	priceScore := relativeSimilarity(candidatePriceCents, comparable.PriceCents)
+	cogsScore := relativeSimilarity(candidateCOGSCents, comparable.EstimatedCOGSCents)
+	base := priceSimilarityWeight*priceScore + cogsSimilarityWeight*cogsScore
+	if sameCategoryStage {
+		return base
+	}
+	if candidate.Category == comparable.Category {
+		return base
+	}
+	return base * categoryFallbackPenalty
+}
+
+func normalizeWeights(candidates []comparableCandidate) {
+	total := 0.0
+	for i := range candidates {
+		raw := math.Max(candidates[i].Score, similarityScoreFloor)
+		total += raw
+		candidates[i].Weight = raw
+	}
+	if total <= 0 {
+		return
+	}
+	for i := range candidates {
+		candidates[i].Weight = candidates[i].Weight / total
+	}
+}
+
+func weightedBaseline(candidates []comparableCandidate) float64 {
+	baseline := 0.0
+	for _, candidate := range candidates {
+		baseline += candidate.Baseline * candidate.Weight
+	}
+	return baseline
+}
+
+func comparableAssumptions(candidates []comparableCandidate) []map[string]any {
+	assumptions := make([]map[string]any, 0, len(candidates))
+	for _, candidate := range candidates {
+		assumptions = append(assumptions, map[string]any{
+			"menu_item_id":       candidate.ID,
+			"name":               candidate.Name,
+			"category":           candidate.Category,
+			"stage":              candidate.Stage,
+			"baseline":           candidate.Baseline,
+			"similarity_score":   candidate.Score,
+			"weight":             candidate.Weight,
+			"nonzero_sales_days": candidate.NonzeroSalesDays,
+			"total_units":        candidate.TotalUnits,
+		})
+	}
+	return assumptions
 }
 
 // calculateNormalizedDecayAverage combines entries from the same date, sorts newest

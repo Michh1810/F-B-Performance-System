@@ -26,6 +26,7 @@ import (
 	"fbperformance/internal/handlers"
 	"fbperformance/internal/overview"
 	"fbperformance/internal/performance_analytics"
+	"fbperformance/internal/services/featureflags"
 	"fbperformance/internal/services/llm"
 	"fbperformance/internal/store"
 )
@@ -67,7 +68,18 @@ func main() {
 	trendAgent := trend.NewAgent(llmClient, llmClient, signalStore, snapshotStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
 	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel, menuItemStore, forecastingService)
 	managerAgent := manager.NewAgent(llmClient, cfg.GeminiModel)
-	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
+	financialFlagger := featureflags.NewPostHogFinancialAgent(
+		cfg.PostHogAPIKey,
+		cfg.PostHogHost,
+		cfg.PostHogDistinctID,
+		time.Duration(cfg.PostHogFeatureFlagTimeoutMS)*time.Millisecond,
+	)
+	defer func() {
+		if err := financialFlagger.Close(); err != nil {
+			log.Printf("close posthog client: %v", err)
+		}
+	}()
+	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent, financialFlagger)
 	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
 
 	ideaStore := store.NewMenuIdeaStore(pool)
