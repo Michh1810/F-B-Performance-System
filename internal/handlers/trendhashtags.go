@@ -49,25 +49,41 @@ type HashtagSuggestionStore interface {
 	Save(ctx context.Context, sourceDescription string, hashtags []string) (store.HashtagSuggestion, error)
 	List(ctx context.Context, status string) ([]store.HashtagSuggestion, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	// LatestApproved returns the hashtags cmd/trend-ingest would sweep right
+	// now — used after a successful approve to trigger a real sweep of
+	// exactly that list, rather than re-deriving it locally.
+	LatestApproved(ctx context.Context) ([]string, error)
+}
+
+// TrendIngestTrigger is the subset of trendingest.Service this handler
+// depends on to kick off a real TikTok sweep the moment a suggestion is
+// approved, instead of waiting for the next scheduled cmd/trend-ingest run.
+type TrendIngestTrigger interface {
+	// TriggerAsync starts a sweep in the background and returns
+	// immediately. Returns false (a no-op) if one is already running.
+	TriggerAsync(hashtags []string) bool
 }
 
 // TrendHashtagsHandler drives the generate-then-review workflow for
 // cmd/trend-ingest's hashtag list: Generate asks the LLM for suggestions
 // grounded in the current restaurant profile + menu, List surfaces them for
-// review, and UpdateStatus records a human's approve/reject verdict.
+// review, and UpdateStatus records a human's approve/reject verdict —
+// approving also triggers a real background sweep via trendIngest.
 type TrendHashtagsHandler struct {
 	profiles    RestaurantProfileStore
 	menuItems   MenuItemLister
 	suggester   HashtagSuggester
 	suggestions HashtagSuggestionStore
+	trendIngest TrendIngestTrigger
 }
 
-func NewTrendHashtagsHandler(profiles RestaurantProfileStore, menuItems MenuItemLister, suggester HashtagSuggester, suggestions HashtagSuggestionStore) *TrendHashtagsHandler {
+func NewTrendHashtagsHandler(profiles RestaurantProfileStore, menuItems MenuItemLister, suggester HashtagSuggester, suggestions HashtagSuggestionStore, trendIngest TrendIngestTrigger) *TrendHashtagsHandler {
 	return &TrendHashtagsHandler{
 		profiles:    profiles,
 		menuItems:   menuItems,
 		suggester:   suggester,
 		suggestions: suggestions,
+		trendIngest: trendIngest,
 	}
 }
 
@@ -144,6 +160,36 @@ func (h *TrendHashtagsHandler) List(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(suggestions)
 }
 
+type saveManualHashtagsRequest struct {
+	Hashtags []string `json:"hashtags"`
+}
+
+// SaveManual handles POST /api/trend-hashtags/suggestions/manual: persists a
+// human-edited hashtag list (added/removed on the dashboard, not an LLM
+// Generate call) as a new "pending" suggestion, so it flows through the same
+// approve/reject review UI — and the same LatestApproved() gate — as a
+// generated one before cmd/trend-ingest can sweep it.
+func (h *TrendHashtagsHandler) SaveManual(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req saveManualHashtagsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Hashtags) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "hashtags must be a non-empty array"})
+		return
+	}
+
+	suggestion, err := h.suggestions.Save(r.Context(), "manual edit", req.Hashtags)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(suggestion)
+}
+
 type updateHashtagSuggestionStatusRequest struct {
 	Status string `json:"status"`
 }
@@ -178,6 +224,21 @@ func (h *TrendHashtagsHandler) UpdateStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Approving is the signal that this hashtag list is ready to sweep for
+	// real — trigger cmd/trend-ingest's logic in the background instead of
+	// waiting for the next scheduled run. Re-reading LatestApproved (rather
+	// than trusting the request body) guarantees we sweep exactly what the
+	// approve/reject gate now considers current, even under a race with
+	// another concurrent approval. ingestTriggered is false both when
+	// nothing needed sweeping and when a sweep was already running — the
+	// frontend polls GET /api/trend-ingest/status either way.
+	var ingestTriggered bool
+	if req.Status == "approved" && h.trendIngest != nil {
+		if hashtags, err := h.suggestions.LatestApproved(r.Context()); err == nil {
+			ingestTriggered = h.trendIngest.TriggerAsync(hashtags)
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": req.Status})
+	json.NewEncoder(w).Encode(map[string]any{"status": req.Status, "ingest_triggered": ingestTriggered})
 }

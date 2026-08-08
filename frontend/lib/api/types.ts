@@ -16,6 +16,19 @@ export type HashtagSuggestion = {
   reviewed_at: string | null
 }
 
+// TrendIngestStatus mirrors trendIngestStatusResponse in
+// internal/handlers/trendingest.go — the single background sweep
+// trendingest.Service tracks, triggered by approving a hashtag suggestion
+// (see TrendHashtagsHandler.UpdateStatus).
+export type TrendIngestStatus = {
+  status: "idle" | "running" | "completed" | "failed"
+  hashtags: string[]
+  started_at: string | null
+  completed_at: string | null
+  videos_upserted: number
+  error?: string
+}
+
 export type ActiveMenuItem = {
   id: string
   name: string
@@ -92,6 +105,35 @@ export type TrendMetrics = {
   growth_period_hours: number
   top_hashtags: string[]
   related_trends: string[]
+}
+
+// TrendVideo mirrors trendVideoResponse in internal/handlers/trendvideos.go
+// — one row from the trend_signals corpus (either a real TikTok video
+// scraped by cmd/trend-ingest, source "tiktok", or an authored sample from
+// cmd/seed-idea-trends, source "mock").
+export type TrendVideo = {
+  id: string
+  source: string
+  caption: string
+  hashtags: string[]
+  url: string
+  view_count: number
+  like_count: number
+  comment_count: number
+  share_count: number
+  posted_at: string | null
+  ingested_at: string
+}
+
+// TrendVideosResponse mirrors listTrendVideosResponse — GET
+// /api/v1/trend-videos. last_updated is the most recent ingested_at across
+// the whole corpus (not just this page), null when the corpus is empty.
+export type TrendVideosResponse = {
+  videos: TrendVideo[]
+  total: number
+  limit: number
+  offset: number
+  last_updated: string | null
 }
 
 // RecommendationResponse mirrors orchestrator.Response — POST

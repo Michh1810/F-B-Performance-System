@@ -28,6 +28,8 @@ import (
 	"fbperformance/internal/performance_analytics"
 	"fbperformance/internal/services/featureflags"
 	"fbperformance/internal/services/llm"
+	"fbperformance/internal/services/tiktok"
+	"fbperformance/internal/services/trendingest"
 	"fbperformance/internal/store"
 )
 
@@ -90,11 +92,23 @@ func main() {
 	restaurantProfileStore := store.NewRestaurantProfileStore(pool)
 	restaurantProfileHandler := handlers.NewRestaurantProfileHandler(restaurantProfileStore)
 
+	tiktokClient := tiktok.NewClient(cfg.ApifyAPIToken, cfg.ApifyActorID)
+	trendIngester := trendingest.New(tiktokClient, llmClient, signalStore, cfg.GeminiEmbedModel)
+	trendIngestService := trendingest.NewService(trendIngester)
+	trendIngestHandler := handlers.NewTrendIngestHandler(trendIngestService)
+
 	hashtagSuggestionStore := store.NewTrendHashtagSuggestionStore(pool)
 	hashtagSuggestAgent := hashtagsuggest.NewAgent(llmClient, cfg.GeminiModel)
-	trendHashtagsHandler := handlers.NewTrendHashtagsHandler(restaurantProfileStore, menuItemStore, hashtagSuggestAgent, hashtagSuggestionStore)
+	trendHashtagsHandler := handlers.NewTrendHashtagsHandler(restaurantProfileStore, menuItemStore, hashtagSuggestAgent, hashtagSuggestionStore, trendIngestService)
+
+	trendIngestScheduler := trendingest.NewScheduler(
+		trendIngestService, hashtagSuggestionStore, cfg.TrendIngestHashtags,
+		cfg.TrendIngestScheduleWeekday, cfg.TrendIngestScheduleHour,
+	)
+	trendIngestScheduler.Start(context.Background())
 
 	menuItemsHandler := handlers.NewMenuItemsHandler(menuItemStore)
+	trendVideosHandler := handlers.NewTrendVideosHandler(signalStore)
 
 	repo := performance_analytics.NewRepository(pool)
 	analyticsService := performance_analytics.NewService(repo)
@@ -159,13 +173,16 @@ func main() {
 		r.Route("/trend-hashtags/suggestions", func(r chi.Router) {
 			r.Get("/", trendHashtagsHandler.List)
 			r.Post("/", trendHashtagsHandler.Generate)
+			r.Post("/manual", trendHashtagsHandler.SaveManual)
 			r.Patch("/{id}", trendHashtagsHandler.UpdateStatus)
 		})
+		r.Get("/trend-ingest/status", trendIngestHandler.Status)
 
 		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
 		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
 		r.Get("/v1/performance-dashboard", analyticsHandler.HandlePerformanceDashboard)
 		r.Get("/v1/overview", overviewHandler.HandleGetOverview)
+		r.Get("/v1/trend-videos", trendVideosHandler.List)
 		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
 		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})

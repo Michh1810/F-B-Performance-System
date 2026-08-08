@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import type { MenuIdea } from "@/lib/api"
+import { isMockVideoUrl } from "@/lib/mock-video-url"
 import { formatCompactNumber, formatRelativeTime } from "./format"
 
 const EVIDENCE_PREVIEW_COUNT = 3
@@ -66,18 +67,28 @@ export function IdeaCard({
             <p className="text-xs text-muted-foreground">No linked videos</p>
           ) : (
             <div className="flex items-center gap-1.5">
-              {previewVideos.map((url) => (
-                <a
-                  key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary"
-                  title={url}
-                >
-                  <Video className="size-4" />
-                </a>
-              ))}
+              {previewVideos.map((url) =>
+                isMockVideoUrl(url) ? (
+                  <span
+                    key={url}
+                    className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground/50"
+                    title="Sample data — not a real TikTok video"
+                  >
+                    <Video className="size-4" />
+                  </span>
+                ) : (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary"
+                    title={url}
+                  >
+                    <Video className="size-4" />
+                  </a>
+                )
+              )}
               {extraVideos > 0 && (
                 <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-xs font-medium text-muted-foreground">
                   +{extraVideos}

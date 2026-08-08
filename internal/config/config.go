@@ -4,11 +4,24 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // defaultTrendIngestHashtags is the fallback set of broad, menu-item-agnostic
 // food-trend hashtags cmd/trend-ingest sweeps when TREND_INGEST_HASHTAGS is unset.
 var defaultTrendIngestHashtags = []string{"foodtiktok", "foodtrends", "foodreview", "newmenuitem", "foodie"}
+
+// weekdaysByName maps TREND_INGEST_SCHEDULE_WEEKDAY's accepted values
+// (case-insensitive full day names) to time.Weekday.
+var weekdaysByName = map[string]time.Weekday{
+	"sunday":    time.Sunday,
+	"monday":    time.Monday,
+	"tuesday":   time.Tuesday,
+	"wednesday": time.Wednesday,
+	"thursday":  time.Thursday,
+	"friday":    time.Friday,
+	"saturday":  time.Saturday,
+}
 
 // Config holds runtime configuration for the server, sourced from environment variables.
 type Config struct {
@@ -29,6 +42,13 @@ type Config struct {
 
 	TrendSignalLookbackDays int
 	TrendIngestHashtags     []string
+
+	// TrendIngestScheduleWeekday/Hour control the API server's automatic
+	// weekly re-sweep (see internal/services/trendingest.Scheduler) — an
+	// addition on top of cmd/trend-ingest itself, which remains a
+	// non-self-scheduling CLI (see its doc comment). Hour is UTC, 0-23.
+	TrendIngestScheduleWeekday time.Weekday
+	TrendIngestScheduleHour    int
 
 	// CORSAllowedOrigins is who may call the API from a browser (the
 	// frontend's dev/prod origins) — see cmd/api/main.go's cors.Handler.
@@ -65,6 +85,19 @@ func Load() Config {
 		hashtags = strings.Split(v, ",")
 		for i := range hashtags {
 			hashtags[i] = strings.TrimSpace(hashtags[i])
+		}
+	}
+
+	scheduleWeekday := time.Sunday
+	if v := os.Getenv("TREND_INGEST_SCHEDULE_WEEKDAY"); v != "" {
+		if parsed, ok := weekdaysByName[strings.ToLower(strings.TrimSpace(v))]; ok {
+			scheduleWeekday = parsed
+		}
+	}
+	scheduleHour := 3
+	if v := os.Getenv("TREND_INGEST_SCHEDULE_HOUR"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 && parsed <= 23 {
+			scheduleHour = parsed
 		}
 	}
 
@@ -106,6 +139,9 @@ func Load() Config {
 
 		TrendSignalLookbackDays: lookbackDays,
 		TrendIngestHashtags:     hashtags,
+
+		TrendIngestScheduleWeekday: scheduleWeekday,
+		TrendIngestScheduleHour:    scheduleHour,
 
 		CORSAllowedOrigins: corsOrigins,
 	}
