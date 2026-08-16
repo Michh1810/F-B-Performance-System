@@ -1,7 +1,9 @@
 services:
   # Go Backend Application
   backend:
-    build: .
+    build:
+      context: .
+      target: dev
     container_name: fbperformance-backend
     ports:
       - "8080:8080"
@@ -11,6 +13,7 @@ services:
       # "postgres" is the compose service's network alias and 5432 is its
       # unmapped internal port.
       - DATABASE_URL=postgres://postgres:devpassword@postgres:5432/fbperformance?sslmode=disable
+      - REDIS_ADDR=redis:6379
       - CLOVER_DEV_API_KEY=${CLOVER_DEV_API_KEY}
       - CLOVER_MERCHANT_MID=${CLOVER_MERCHANT_MID}
       - YELP_REVIEW_API_KEY=${YELP_REVIEW_API_KEY}

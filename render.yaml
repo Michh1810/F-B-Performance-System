@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: fbperformance-backend
+    env: docker
+    plan: free
+    # Render will build the Docker image using the Dockerfile at the repository root.
+    # The service will be exposed on port 8080 (the same as the local Docker setup).
+    dockerfilePath: ./Dockerfile
+    # Environment variables – replace the placeholders with values from your cloud services.
+    envVars:
+      - key: DATABASE_URL
+        value: ${DATABASE_URL} # Neon PostgreSQL connection string
+      - key: REDIS_URL
+        value: ${REDIS_URL}   # Upstash Redis URL
+      - key: GEMINI_API_KEY
+        value: ${GEMINI_API_KEY}
+      - key: APIFY_API_TOKEN
+        value: ${APIFY_API_TOKEN}
+      - key: APIFY_ACTOR_ID
+        value: ${APIFY_ACTOR_ID}
+    # Optional health check endpoint.
+    healthCheckPath: /healthz
+    # Auto‑deploy on pushes to the main branch.
+    autoDeploy: true

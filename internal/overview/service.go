@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
+	"fbperformance/internal/cache"
 	"fbperformance/internal/services/llm"
 )
 
@@ -14,6 +16,11 @@ type Service struct {
 	llmClient *llm.Client
 	model     string
 }
+
+const (
+	overviewCacheKey = "overview"
+	cacheTTL         = 5 * time.Minute
+)
 
 func NewService(repo *Repository, llmClient *llm.Client, model string) *Service {
 	return &Service{repo: repo, llmClient: llmClient, model: model}
@@ -32,6 +39,22 @@ func calculateTrend(current, previous float64) (string, bool) {
 }
 
 func (s *Service) GetOverviewData(ctx context.Context, from, to time.Time) (OverviewResponse, error) {
+	if redisClient := cache.GetClient(); redisClient != nil {
+		cached, err := redisClient.Get(ctx, overviewCacheKey).Result()
+		log.Printf("Redis GET key=%s err=%v len=%d", overviewCacheKey, err, len(cached))
+		if err == nil {
+			var response OverviewResponse
+			if unmarshalErr := json.Unmarshal([]byte(cached), &response); unmarshalErr == nil {
+				log.Printf("Redis cache hit: %s", overviewCacheKey)
+				return response, nil
+			}
+		} else {
+			log.Printf("Redis cache miss: %s", overviewCacheKey)
+		}
+	} else {
+		log.Printf("Redis unavailable, falling back to database")
+	}
+
 	// Calculate previous period
 	window := to.Sub(from)
 	prevTo := from
@@ -134,11 +157,30 @@ func (s *Service) GetOverviewData(ctx context.Context, from, to time.Time) (Over
 		aiInsights = []AIInsight{}
 	}
 
-	return OverviewResponse{
+	response := OverviewResponse{
 		CriticalAlert: criticalAlert,
 		WeeklyPulse:   pulse,
 		AIInsights:    aiInsights,
-	}, nil
+	}
+
+	if redisClient := cache.GetClient(); redisClient != nil {
+		payload, marshalErr := json.Marshal(response)
+		if marshalErr == nil {
+			err := redisClient.Set(ctx, overviewCacheKey, payload, cacheTTL).Err()
+			log.Printf("Redis SET key=%s err=%v", overviewCacheKey, err)
+
+			exists, existsErr := redisClient.Exists(ctx, overviewCacheKey).Result()
+			log.Printf("Redis EXISTS key=%s exists=%d err=%v", overviewCacheKey, exists, existsErr)
+
+			ttl, ttlErr := redisClient.TTL(ctx, overviewCacheKey).Result()
+			log.Printf("Redis TTL key=%s ttl=%v err=%v", overviewCacheKey, ttl, ttlErr)
+
+			value, verifyErr := redisClient.Get(ctx, overviewCacheKey).Result()
+			log.Printf("Redis VERIFY GET key=%s err=%v len=%d", overviewCacheKey, verifyErr, len(value))
+		}
+	}
+
+	return response, nil
 }
 
 func (s *Service) generateAIInsights(ctx context.Context, pulse WeeklyPulse) ([]AIInsight, error) {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"fbperformance/internal/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -72,6 +73,7 @@ func categorizeItem(name string) string {
 
 func main() {
 	godotenv.Load()
+	cache.InitializeRedis()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://postgres:devpassword@postgres:5432/fbperformance?sslmode=disable"
@@ -184,4 +186,5 @@ func main() {
 	}
 
 	log.Printf("Successfully synced %d transactions from %d orders.\n", txCount, len(ordersResp.Elements))
+	cache.InvalidateAnalyticsCache(ctx)
 }

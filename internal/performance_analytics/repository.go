@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"fbperformance/internal/cache"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -227,6 +228,7 @@ func (r *Repository) SaveGoogleReviews(ctx context.Context, reviews []GoogleRevi
 	if _, err := br.Exec(); err != nil {
 		return err
 	}
+	cache.InvalidateAnalyticsCache(ctx)
 
 	return nil
 }

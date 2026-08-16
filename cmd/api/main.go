@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,6 +24,7 @@ import (
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/ai"
+	"fbperformance/internal/cache"
 	"fbperformance/internal/config"
 	"fbperformance/internal/handlers"
 	"fbperformance/internal/overview"
@@ -37,11 +40,14 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+	cache.InitializeRedis()
 
 	databaseURL := cfg.DatabaseURL
 	if databaseURL == "" {
 		databaseURL = "postgres://postgres:devpassword@localhost:5440/fbperformance?sslmode=disable"
 	}
+
+	logDatabaseTarget(databaseURL)
 
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -57,6 +63,8 @@ func main() {
 		log.Fatalf("connect database: %v", err)
 	}
 	defer pool.Close()
+
+	store.RunMigrations(databaseURL)
 
 	snapshotStore := store.NewTrendSnapshotStore(pool)
 	signalStore := store.NewTrendSignalStore(pool)
@@ -189,4 +197,20 @@ func main() {
 
 	log.Printf("listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
+}
+
+func logDatabaseTarget(databaseURL string) {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		log.Printf("database target: unable to parse DATABASE_URL: %v", err)
+		return
+	}
+
+	host := u.Hostname()
+	dbName := strings.TrimPrefix(u.Path, "/")
+	if dbName == "" {
+		dbName = "(empty)"
+	}
+
+	log.Printf("database target: host=%s db=%s", host, dbName)
 }
