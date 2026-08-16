@@ -20,6 +20,12 @@ const defaultBaseURL = "https://api.apify.com"
 // clockworks/tiktok-scraper runs typically take 30-120s.
 const runTimeoutSeconds = 120
 
+// commentsPerVideo bounds how many comments are requested per video via
+// the actor's commentsPerPost/topLevelCommentsPerPost params — enough for
+// lightweight evidence (sentiment, "what do people say about this"), not a
+// full comment-section crawl.
+const commentsPerVideo = 5
+
 // Client is a thin, authenticated HTTP client for running the
 // clockworks/tiktok-scraper Apify actor synchronously.
 type Client struct {
@@ -59,15 +65,23 @@ func NewClient(apiToken, actorID string, opts ...Option) *Client {
 }
 
 type runSyncRequest struct {
-	Hashtags       []string `json:"hashtags"`
-	ResultsPerPage int      `json:"resultsPerPage"`
+	Hashtags                []string `json:"hashtags"`
+	ResultsPerPage          int      `json:"resultsPerPage"`
+	CommentsPerPost         int      `json:"commentsPerPost"`
+	TopLevelCommentsPerPost int      `json:"topLevelCommentsPerPost"`
 }
 
 // FetchByHashtags runs the actor synchronously against the given hashtags
-// and returns the matched videos. resultsPerPage must be set explicitly;
-// the actor's own default is 1.
+// and returns the matched videos, each with up to commentsPerVideo top
+// comments attached (best-effort — see attachComments). resultsPerPage
+// must be set explicitly; the actor's own default is 1.
 func (c *Client) FetchByHashtags(ctx context.Context, hashtags []string, resultsPerPage int) ([]Video, error) {
-	payload, err := json.Marshal(runSyncRequest{Hashtags: hashtags, ResultsPerPage: resultsPerPage})
+	payload, err := json.Marshal(runSyncRequest{
+		Hashtags:                hashtags,
+		ResultsPerPage:          resultsPerPage,
+		CommentsPerPost:         commentsPerVideo,
+		TopLevelCommentsPerPost: commentsPerVideo,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("tiktok: encode request: %w", err)
 	}
@@ -88,7 +102,59 @@ func (c *Client) FetchByHashtags(ctx context.Context, hashtags []string, results
 	for _, item := range items {
 		videos = append(videos, item.toVideo())
 	}
+	c.attachComments(ctx, items, videos)
 	return videos, nil
+}
+
+// attachComments fetches the comments dataset shared by every item in this
+// run (see apifyVideoItem.CommentsDatasetURL) once, and attaches each
+// video's comments by matching videoWebUrl back to Video.URL. Best-effort:
+// any failure here (no dataset URL present, request error, bad JSON) just
+// leaves Comments empty on every video rather than failing the whole
+// FetchByHashtags call — comments are enrichment, not the primary result.
+// The dataset URL is a signed Apify URL and doesn't need the actor's
+// bearer token.
+func (c *Client) attachComments(ctx context.Context, items []apifyVideoItem, videos []Video) {
+	var datasetURL string
+	for _, item := range items {
+		if item.CommentsDatasetURL != "" {
+			datasetURL = item.CommentsDatasetURL
+			break
+		}
+	}
+	if datasetURL == "" {
+		return
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, datasetURL, nil)
+	if err != nil {
+		return
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	var rawComments []apifyCommentItem
+	if err := json.Unmarshal(body, &rawComments); err != nil {
+		return
+	}
+
+	byVideoURL := make(map[string][]Comment, len(videos))
+	for _, rc := range rawComments {
+		byVideoURL[rc.VideoWebURL] = append(byVideoURL[rc.VideoWebURL], rc.toComment())
+	}
+	for i := range videos {
+		videos[i].Comments = byVideoURL[videos[i].URL]
+	}
 }
 
 // doWithRetries sends an authenticated request, retrying transient failures

@@ -7,21 +7,41 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"fbperformance/internal/agents/financial"
 	"fbperformance/internal/agents/manager"
 	"fbperformance/internal/agents/trend"
+	"fbperformance/internal/services/featureflags"
 )
 
-type Orchestrator struct {
-	trend     *trend.Agent
-	financial *financial.Agent
-	manager   *manager.Agent
+const (
+	financialFlagOffFallback   = "Financial analysis unavailable: financial agent disabled by feature flag."
+	financialFlagErrorFallback = "Financial analysis unavailable: feature-flag evaluation failed; financial agent skipped."
+)
+
+type trendAnalyzer interface {
+	Analyze(ctx context.Context, in trend.Input) (trend.Result, error)
 }
 
-func New(trendAgent *trend.Agent, financialAgent *financial.Agent, managerAgent *manager.Agent) *Orchestrator {
-	return &Orchestrator{trend: trendAgent, financial: financialAgent, manager: managerAgent}
+type financialAnalyzer interface {
+	Analyze(ctx context.Context, in financial.Input) (string, error)
+}
+
+type managerDecider interface {
+	Decide(ctx context.Context, in manager.Input) (*manager.Output, error)
+}
+
+type Orchestrator struct {
+	trend     trendAnalyzer
+	financial financialAnalyzer
+	manager   managerDecider
+	flags     featureflags.FeatureFlags
+}
+
+func New(trendAgent trendAnalyzer, financialAgent financialAnalyzer, managerAgent managerDecider, flags featureflags.FeatureFlags) *Orchestrator {
+	return &Orchestrator{trend: trendAgent, financial: financialAgent, manager: managerAgent, flags: flags}
 }
 
 // financialOutcome carries the Financial Agent's result across its goroutine.
@@ -44,7 +64,16 @@ func (o *Orchestrator) GetRecommendation(ctx context.Context, req Request) (*Res
 	var trendOut trendOutcome
 	var financialOut financialOutcome
 
-	wg.Add(2)
+	financialEnabled, flagErr := o.flags.FinancialAgentEnabled(ctx)
+	runFinancial := flagErr == nil && financialEnabled
+	if flagErr != nil {
+		log.Printf("orchestrator: evaluate financial-agent-enabled: %v", flagErr)
+		financialOut.text = financialFlagErrorFallback
+	} else if !financialEnabled {
+		financialOut.text = financialFlagOffFallback
+	}
+
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		trendOut.result, trendOut.err = o.trend.Analyze(ctx, trend.Input{
@@ -52,19 +81,23 @@ func (o *Orchestrator) GetRecommendation(ctx context.Context, req Request) (*Res
 			ItemName:   req.ItemName,
 		})
 	}()
-	go func() {
-		defer wg.Done()
-		financialOut.text, financialOut.err = o.financial.Analyze(ctx, financial.Input{
-			ItemName:      req.ItemName,
-			FinancialData: req.FinancialData,
-		})
-	}()
+
+	if runFinancial {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			financialOut.text, financialOut.err = o.financial.Analyze(ctx, financial.Input{
+				MenuItemID: req.MenuItemID,
+				ItemName:   req.ItemName,
+			})
+		}()
+	}
 	wg.Wait()
 
 	if trendOut.err != nil {
 		return nil, trendOut.err
 	}
-	if financialOut.err != nil {
+	if runFinancial && financialOut.err != nil {
 		return nil, financialOut.err
 	}
 

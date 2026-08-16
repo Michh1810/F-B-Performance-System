@@ -14,8 +14,11 @@ import (
 	"fbperformance/internal/agents/manager"
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
+	"fbperformance/internal/services/featureflags"
 	"fbperformance/internal/services/llm"
 )
+
+var _ featureflags.FeatureFlags = alwaysEnabledFlags{}
 
 // noopSnapshotStore satisfies trend.SnapshotStore without ever being
 // invoked — these tests only exercise the handler's validation path, which
@@ -45,12 +48,33 @@ func (noopSignalSearcher) SearchSimilar(ctx context.Context, embedding []float32
 	return nil, nil
 }
 
+// noopMenuItemLookup/noopForecaster satisfy financial.MenuItemLookup/
+// financial.Forecaster for the same reason — never invoked by these
+// validation-path tests.
+type noopMenuItemLookup struct{}
+
+func (noopMenuItemLookup) Get(ctx context.Context, id uuid.UUID) (financial.MenuItem, error) {
+	return financial.MenuItem{}, nil
+}
+
+type noopForecaster struct{}
+
+func (noopForecaster) ForecastMenuItems(ctx context.Context, requests []financial.ForecastRequest) (financial.ForecastResponse, error) {
+	return financial.ForecastResponse{}, nil
+}
+
+type alwaysEnabledFlags struct{}
+
+func (alwaysEnabledFlags) FinancialAgentEnabled(ctx context.Context) (bool, error) {
+	return true, nil
+}
+
 func newTestHandler() *RecommendationHandler {
 	llmClient := llm.NewClient("")
 	trendAgent := trend.NewAgent(llmClient, noopEmbedder{}, noopSignalSearcher{}, noopSnapshotStore{}, "test-model", "embed-model", 30)
-	financialAgent := financial.NewAgent(llmClient, "test-model")
+	financialAgent := financial.NewAgent(llmClient, "test-model", noopMenuItemLookup{}, noopForecaster{})
 	managerAgent := manager.NewAgent(llmClient, "test-model")
-	o := orchestrator.New(trendAgent, financialAgent, managerAgent)
+	o := orchestrator.New(trendAgent, financialAgent, managerAgent, alwaysEnabledFlags{})
 	return NewRecommendationHandler(o)
 }
 
