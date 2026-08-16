@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { MenuIdea } from "@/lib/api"
+import { isMockVideoUrl } from "@/lib/mock-video-url"
 import { formatCompactNumber } from "./format"
 
 export function IdeaReviewModal({
@@ -127,19 +128,30 @@ export function IdeaReviewModal({
               <p className="mt-1.5 text-sm text-muted-foreground">No linked videos</p>
             ) : (
               <ul className="mt-1.5 flex flex-col gap-1">
-                {idea.source_video_urls.map((url, i) => (
-                  <li key={url}>
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+                {idea.source_video_urls.map((url, i) =>
+                  isMockVideoUrl(url) ? (
+                    <li
+                      key={url}
+                      className="flex items-center gap-1.5 text-sm text-muted-foreground"
+                      title="Sample data from cmd/seed-idea-trends — not a real TikTok video"
                     >
                       <ExternalLink className="size-3.5 shrink-0" />
-                      Evidence video {i + 1}
-                    </a>
-                  </li>
-                ))}
+                      Evidence video {i + 1} (sample data, not clickable)
+                    </li>
+                  ) : (
+                    <li key={url}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+                      >
+                        <ExternalLink className="size-3.5 shrink-0" />
+                        Evidence video {i + 1}
+                      </a>
+                    </li>
+                  )
+                )}
               </ul>
             )}
           </div>

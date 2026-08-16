@@ -88,6 +88,61 @@ func (s *TrendSignalStore) Upsert(ctx context.Context, signal trend.Signal, embe
 	return nil
 }
 
+// List returns the trend-signal corpus most-recently-ingested first (a
+// video re-swept by a later cmd/trend-ingest run sorts by its refreshed
+// ingested_at, not its original posted_at) — the browsing view behind the
+// "scraped videos" page, as opposed to SearchSimilar/SearchRelevant's
+// embedding search used by the agents. total is the full corpus count
+// (ignoring limit/offset), so callers can paginate. latestIngestedAt is the
+// max ingested_at across the WHOLE corpus (not just this page) — queried
+// separately from the paginated rows below so it's correct regardless of
+// offset, rather than assuming rows[0] (which is only true at offset 0).
+func (s *TrendSignalStore) List(ctx context.Context, limit, offset int) (signals []trend.Signal, total int, latestIngestedAt *time.Time, err error) {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*), max(ingested_at) FROM trend_signals`).Scan(&total, &latestIngestedAt); err != nil {
+		return nil, 0, nil, fmt.Errorf("store: count trend signals: %w", err)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, source, external_id, caption, hashtags, video_url, top_comments,
+			view_count, like_count, comment_count, share_count, posted_at, ingested_at
+		FROM trend_signals
+		ORDER BY ingested_at DESC
+		LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("store: list trend signals: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sig trend.Signal
+		var hashtags []byte
+		var videoURL *string
+		var topComments []byte
+		if err := rows.Scan(
+			&sig.ID, &sig.Source, &sig.ExternalID, &sig.Caption, &hashtags, &videoURL, &topComments,
+			&sig.ViewCount, &sig.LikeCount, &sig.CommentCount, &sig.ShareCount, &sig.PostedAt, &sig.IngestedAt,
+		); err != nil {
+			return nil, 0, nil, fmt.Errorf("store: scan trend signal: %w", err)
+		}
+		if err := json.Unmarshal(hashtags, &sig.Hashtags); err != nil {
+			return nil, 0, nil, fmt.Errorf("store: unmarshal hashtags: %w", err)
+		}
+		if err := json.Unmarshal(topComments, &sig.TopComments); err != nil {
+			return nil, 0, nil, fmt.Errorf("store: unmarshal top comments: %w", err)
+		}
+		if videoURL != nil {
+			sig.URL = *videoURL
+		}
+		signals = append(signals, sig)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, nil, fmt.Errorf("store: list trend signals: %w", err)
+	}
+	return signals, total, latestIngestedAt, nil
+}
+
 // SearchSimilar returns signals whose embedding is closest to embedding
 // (cosine distance), most-similar first, filtered to those posted at or
 // after since and within similarityCutoff.

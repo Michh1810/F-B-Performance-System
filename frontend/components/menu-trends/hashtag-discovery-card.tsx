@@ -22,6 +22,9 @@ export function HashtagDiscoveryCard({
   canGenerate,
   error,
   disabled = false,
+  dirty = false,
+  onSaveDraft,
+  savingDraft = false,
 }: {
   hashtags: string[]
   onAdd: (tag: string) => void
@@ -31,6 +34,13 @@ export function HashtagDiscoveryCard({
   canGenerate: boolean
   error: string | null
   disabled?: boolean
+  // dirty/onSaveDraft/savingDraft: added hashtags only ever lived in local
+  // state before this — they vanished on refresh. Save persists the current
+  // list as a new "pending" suggestion (see saveManualHashtagSuggestion),
+  // so it can go through the same approve/reject review as a generated one.
+  dirty?: boolean
+  onSaveDraft?: () => void
+  savingDraft?: boolean
 }) {
   const [draft, setDraft] = useState("")
 
@@ -52,17 +62,25 @@ export function HashtagDiscoveryCard({
               These hashtags will be used to discover trending TikTok videos.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
-            onClick={onGenerate}
-            disabled={generating || !canGenerate || disabled}
-            title={canGenerate ? undefined : "Add a restaurant description first"}
-          >
-            {generating ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            Generate Hashtags
-          </Button>
+          <div className="flex items-center gap-2">
+            {dirty && onSaveDraft && (
+              <Button size="sm" onClick={onSaveDraft} disabled={savingDraft || disabled}>
+                {savingDraft && <Loader2 className="animate-spin" />}
+                Save
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={onGenerate}
+              disabled={generating || !canGenerate || disabled}
+              title={canGenerate ? undefined : "Add a restaurant description first"}
+            >
+              {generating ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              Generate Hashtags
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

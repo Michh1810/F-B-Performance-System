@@ -5,23 +5,30 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ApiError,
   type ActiveMenuItem,
+  type HashtagSuggestion,
   type MenuIdea,
   type RestaurantProfile,
   generateHashtagSuggestion,
+  getLatestApprovedSuggestion,
   getRestaurantProfile,
   listActiveMenuItems,
   listHashtagSuggestions,
   listIdeas,
   promoteIdea,
   runMenuIdeaAgent,
+  saveManualHashtagSuggestion,
   setIdeaStatus,
+  updateHashtagSuggestionStatus,
   updateRestaurantProfile,
 } from "@/lib/api"
 import { computeLatestBatchMetrics } from "@/lib/idea-metrics"
+import { useTrendIngestStatus } from "@/lib/use-trend-ingest-status"
 
+import { IngestStatusBanner } from "@/components/ingest-status-banner"
 import { PageHeader } from "./page-header"
 import { RestaurantDescriptionCard } from "./restaurant-description-card"
 import { HashtagDiscoveryCard } from "./hashtag-discovery-card"
+import { HashtagSuggestionHistory } from "./hashtag-suggestion-history"
 import { ActiveMenuSummary } from "./active-menu-summary"
 import { ActiveMenuDrawer } from "./active-menu-drawer"
 import { RunAgentButton, type RunPhase } from "./run-agent-button"
@@ -29,6 +36,10 @@ import { LatestRunSummary } from "./latest-run-summary"
 import { IdeaFilters, type IdeaFilter, type IdeaSort } from "./idea-filters"
 import { IdeaList } from "./idea-list"
 import { IdeaReviewModal } from "./idea-review-modal"
+
+function sameHashtags(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((tag, i) => tag === b[i])
+}
 
 const RUN_LOADING_PHASES = [
   "Fetching TikTok trends…",
@@ -45,8 +56,13 @@ export function MenuTrendsIdeasPage() {
 
   // Hashtags
   const [hashtags, setHashtags] = useState<string[]>([])
+  const [savedHashtags, setSavedHashtags] = useState<string[]>([])
   const [generatingHashtags, setGeneratingHashtags] = useState(false)
+  const [savingDraftHashtags, setSavingDraftHashtags] = useState(false)
   const [hashtagError, setHashtagError] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<HashtagSuggestion[]>([])
+  const [reviewingSuggestionId, setReviewingSuggestionId] = useState<string | null>(null)
+  const ingestStatus = useTrendIngestStatus()
 
   // Active menu
   const [activeMenuItems, setActiveMenuItems] = useState<ActiveMenuItem[]>([])
@@ -86,16 +102,7 @@ export function MenuTrendsIdeasPage() {
       })
       .finally(() => setProfileLoading(false))
 
-    listHashtagSuggestions(undefined, controller.signal)
-      .then((suggestions) => {
-        if (suggestions.length === 0) return
-        const latest = suggestions.reduce((a, b) => (a.generated_at > b.generated_at ? a : b))
-        setHashtags(latest.hashtags)
-      })
-      .catch(() => {
-        // no prior suggestions — start with an empty hashtag list
-      })
-
+    refreshSuggestions(controller.signal)
     refreshActiveMenu(controller.signal)
     refreshIdeas(controller.signal)
 
@@ -126,6 +133,30 @@ export function MenuTrendsIdeasPage() {
       .finally(() => setIdeasLoading(false))
   }
 
+  // Seeds the editable hashtag draft from what's actually driving
+  // trend-ingest: the most recently *approved* suggestion if one exists,
+  // otherwise the most recently generated one (any status) so there's still
+  // something to review/approve. syncBaseline also resets `savedHashtags`,
+  // the dirty-check baseline for the Save button.
+  function seedDraftFromSuggestions(list: HashtagSuggestion[]) {
+    if (list.length === 0) return
+    const seed = getLatestApprovedSuggestion(list) ?? list.reduce((a, b) => (a.generated_at > b.generated_at ? a : b))
+    setHashtags(seed.hashtags)
+    setSavedHashtags(seed.hashtags)
+  }
+
+  function refreshSuggestions(signal?: AbortSignal) {
+    listHashtagSuggestions(undefined, signal)
+      .then((list) => {
+        setSuggestions(list)
+        seedDraftFromSuggestions(list)
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return
+        // no prior suggestions — start with an empty hashtag list
+      })
+  }
+
   async function handleSaveDescription() {
     setSavingProfile(true)
     try {
@@ -150,12 +181,68 @@ export function MenuTrendsIdeasPage() {
       }
       const suggestion = await generateHashtagSuggestion()
       setHashtags(suggestion.hashtags)
+      setSavedHashtags(suggestion.hashtags)
+      setSuggestions((prev) => [suggestion, ...prev])
     } catch (err) {
       setHashtagError(err instanceof Error ? err.message : "Failed to generate hashtags.")
     } finally {
       setGeneratingHashtags(false)
     }
   }
+
+  const hashtagsDirty = !sameHashtags(hashtags, savedHashtags)
+
+  // Persists the current (edited) hashtag draft as a new "pending"
+  // suggestion — see saveManualHashtagSuggestion. Without this, hashtags
+  // added/removed via the card's Add/Remove buttons only ever lived in
+  // local state and vanished on refresh.
+  async function handleSaveDraftHashtags() {
+    setHashtagError(null)
+    setSavingDraftHashtags(true)
+    try {
+      const suggestion = await saveManualHashtagSuggestion(hashtags)
+      setSavedHashtags(suggestion.hashtags)
+      setSuggestions((prev) => [suggestion, ...prev])
+    } catch (err) {
+      setHashtagError(err instanceof Error ? err.message : "Failed to save hashtags.")
+    } finally {
+      setSavingDraftHashtags(false)
+    }
+  }
+
+  async function handleApproveSuggestion(suggestion: HashtagSuggestion) {
+    setReviewingSuggestionId(suggestion.id)
+    try {
+      await updateHashtagSuggestionStatus(suggestion.id, "approved")
+      // Approving is the action that makes a suggestion the one
+      // cmd/trend-ingest actually sweeps — sync the draft to match so the
+      // card reflects what's now active instead of looking stale/dirty.
+      setHashtags(suggestion.hashtags)
+      setSavedHashtags(suggestion.hashtags)
+      refreshSuggestions()
+    } catch (err) {
+      setHashtagError(err instanceof Error ? err.message : "Failed to approve suggestion.")
+    } finally {
+      setReviewingSuggestionId(null)
+    }
+  }
+
+  async function handleRejectSuggestion(suggestion: HashtagSuggestion) {
+    setReviewingSuggestionId(suggestion.id)
+    try {
+      await updateHashtagSuggestionStatus(suggestion.id, "rejected")
+      refreshSuggestions()
+    } catch (err) {
+      setHashtagError(err instanceof Error ? err.message : "Failed to reject suggestion.")
+    } finally {
+      setReviewingSuggestionId(null)
+    }
+  }
+
+  const activeSuggestionId = useMemo(
+    () => getLatestApprovedSuggestion(suggestions)?.id ?? null,
+    [suggestions]
+  )
 
   const loadingPhaseTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -261,8 +348,21 @@ export function MenuTrendsIdeasPage() {
             canGenerate={description.trim().length > 0}
             error={hashtagError}
             disabled={runPhase === "running"}
+            dirty={hashtagsDirty}
+            onSaveDraft={handleSaveDraftHashtags}
+            savingDraft={savingDraftHashtags}
           />
         </div>
+
+        <HashtagSuggestionHistory
+          suggestions={suggestions}
+          activeSuggestionId={activeSuggestionId}
+          onApprove={handleApproveSuggestion}
+          onReject={handleRejectSuggestion}
+          busyId={reviewingSuggestionId}
+        />
+
+        <IngestStatusBanner status={ingestStatus} />
 
         <ActiveMenuSummary
           items={activeMenuItems}

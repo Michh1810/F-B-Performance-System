@@ -51,6 +51,12 @@ type Signal struct {
 	// ingested before this field existed, or where the source video had no
 	// comments fetched.
 	TopComments []Comment
+	// IngestedAt is when this row was first inserted, or last refreshed by
+	// a re-run of the ingestion sweep (see TrendSignalStore.Upsert, which
+	// bumps it to CURRENT_TIMESTAMP on every conflict). Only populated by
+	// TrendSignalStore.List — the embedding-search methods don't select it,
+	// since nothing they feed needs it.
+	IngestedAt time.Time
 }
 
 // Comment is a lightweight comment captured as evidence alongside a
