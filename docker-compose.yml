@@ -7,16 +7,21 @@ services:
     container_name: fbperformance-backend
     ports:
       - "8080:8080"
-    volumes:
-      - .:/app
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      # Overrides the host-facing DATABASE_URL in .env (localhost:5440,
+      # correct for tools running on the host) — inside this container,
+      # "postgres" is the compose service's network alias and 5432 is its
+      # unmapped internal port.
+      - DATABASE_URL=postgres://postgres:devpassword@postgres:5432/fbperformance?sslmode=disable
       - REDIS_ADDR=redis:6379
       - CLOVER_DEV_API_KEY=${CLOVER_DEV_API_KEY}
       - CLOVER_MERCHANT_MID=${CLOVER_MERCHANT_MID}
       - YELP_REVIEW_API_KEY=${YELP_REVIEW_API_KEY}
       - GOOGLE_PLACEID_LAV_API_KEY=${GOOGLE_PLACEID_LAV_API_KEY}
       - GOOGLE_MAP_DEMO_API_KEY=${GOOGLE_MAP_DEMO_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN}
+      - APIFY_ACTOR_ID=${APIFY_ACTOR_ID}
 
     depends_on:
       - postgres

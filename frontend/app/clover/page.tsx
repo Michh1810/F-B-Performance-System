@@ -45,7 +45,7 @@ export default async function CloverPage() {
   return (
     <div className="flex min-h-svh p-6 bg-slate-50">
       <div className="flex max-w-2xl min-w-0 flex-col gap-6 text-sm leading-loose w-full">
-        <h1 className="text-2xl font-bold tracking-tight">Today's Clover Sales</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Today&apos;s Clover Sales</h1>
         
         {!data ? (
           <div className="p-4 rounded-lg bg-red-50 text-red-600 border border-red-200">

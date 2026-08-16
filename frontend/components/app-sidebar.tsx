@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ListIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, ZapIcon } from "lucide-react"
+import { LayoutDashboardIcon, ListIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, ZapIcon, SparklesIcon, VideoIcon } from "lucide-react"
 
 const data = {
   user: {
@@ -45,6 +45,22 @@ const data = {
       url: "/performance-data",
       icon: (
         <ChartBarIcon
+        />
+      ),
+    },
+    {
+      title: "AI Recommendations",
+      url: "/ai-recommendations",
+      icon: (
+        <SparklesIcon
+        />
+      ),
+    },
+    {
+      title: "Scraped Videos",
+      url: "/trend-videos",
+      icon: (
+        <VideoIcon
         />
       ),
     },

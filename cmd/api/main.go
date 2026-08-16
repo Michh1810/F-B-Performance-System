@@ -13,21 +13,26 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 
 	"fbperformance/internal/agents/financial"
+	"fbperformance/internal/agents/hashtagsuggest"
 	"fbperformance/internal/agents/manager"
+	"fbperformance/internal/agents/menuidea"
 	"fbperformance/internal/agents/orchestrator"
 	"fbperformance/internal/agents/trend"
 	"fbperformance/internal/ai"
 	"fbperformance/internal/cache"
 	"fbperformance/internal/config"
-	"fbperformance/internal/demand_forecast"
 	"fbperformance/internal/handlers"
 	"fbperformance/internal/overview"
 	"fbperformance/internal/performance_analytics"
+	"fbperformance/internal/services/featureflags"
 	"fbperformance/internal/services/llm"
+	"fbperformance/internal/services/tiktok"
+	"fbperformance/internal/services/trendingest"
 	"fbperformance/internal/store"
 )
 
@@ -65,22 +70,60 @@ func main() {
 	signalStore := store.NewTrendSignalStore(pool)
 
 	aiClient := ai.NewClientFromEnv()
-	forecastingService := demand_forecast.NewServiceWithDB(db, aiClient)
-	forecastingHandler := demand_forecast.NewHandler(forecastingService)
+	forecastingService := financial.NewServiceWithDB(db, aiClient)
+	forecastingHandler := financial.NewHandler(forecastingService)
+	menuItemStore := store.NewMenuItemStore(pool)
 
 	llmClient := llm.NewClient(cfg.GeminiAPIKey)
 	trendAgent := trend.NewAgent(llmClient, llmClient, signalStore, snapshotStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
-	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel)
+	financialAgent := financial.NewAgent(llmClient, cfg.GeminiModel, menuItemStore, forecastingService)
 	managerAgent := manager.NewAgent(llmClient, cfg.GeminiModel)
-	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent)
+	financialFlagger := featureflags.NewPostHogFinancialAgent(
+		cfg.PostHogAPIKey,
+		cfg.PostHogHost,
+		cfg.PostHogDistinctID,
+		time.Duration(cfg.PostHogFeatureFlagTimeoutMS)*time.Millisecond,
+	)
+	defer func() {
+		if err := financialFlagger.Close(); err != nil {
+			log.Printf("close posthog client: %v", err)
+		}
+	}()
+	recommendationOrchestrator := orchestrator.New(trendAgent, financialAgent, managerAgent, financialFlagger)
 	recommendationHandler := handlers.NewRecommendationHandler(recommendationOrchestrator)
+
+	ideaStore := store.NewMenuIdeaStore(pool)
+	menuIdeaCallLogStore := store.NewMenuIdeaCallLogStore(pool)
+	menuIdeaAgent := menuidea.NewAgent(llmClient, llmClient, signalStore, cfg.GeminiModel, cfg.GeminiEmbedModel, cfg.TrendSignalLookbackDays)
+	ideasHandler := handlers.NewIdeasHandler(ideaStore, menuItemStore, menuIdeaAgent, menuIdeaCallLogStore)
+
+	restaurantProfileStore := store.NewRestaurantProfileStore(pool)
+	restaurantProfileHandler := handlers.NewRestaurantProfileHandler(restaurantProfileStore)
+
+	tiktokClient := tiktok.NewClient(cfg.ApifyAPIToken, cfg.ApifyActorID)
+	trendIngester := trendingest.New(tiktokClient, llmClient, signalStore, cfg.GeminiEmbedModel)
+	trendIngestService := trendingest.NewService(trendIngester)
+	trendIngestHandler := handlers.NewTrendIngestHandler(trendIngestService)
+
+	hashtagSuggestionStore := store.NewTrendHashtagSuggestionStore(pool)
+	hashtagSuggestAgent := hashtagsuggest.NewAgent(llmClient, cfg.GeminiModel)
+	trendHashtagsHandler := handlers.NewTrendHashtagsHandler(restaurantProfileStore, menuItemStore, hashtagSuggestAgent, hashtagSuggestionStore, trendIngestService)
+
+	trendIngestScheduler := trendingest.NewScheduler(
+		trendIngestService, hashtagSuggestionStore, cfg.TrendIngestHashtags,
+		cfg.TrendIngestScheduleWeekday, cfg.TrendIngestScheduleHour,
+	)
+	trendIngestScheduler.Start(context.Background())
+
+	menuItemsHandler := handlers.NewMenuItemsHandler(menuItemStore)
+	trendVideosHandler := handlers.NewTrendVideosHandler(signalStore)
 
 	repo := performance_analytics.NewRepository(pool)
 	analyticsService := performance_analytics.NewService(repo)
 	analyticsHandler := performance_analytics.NewHandler(analyticsService)
 
 	overviewRepo := overview.NewRepository(pool)
-	overviewService := overview.NewService(overviewRepo, llmClient)
+	overviewService := overview.NewService(overviewRepo, llmClient, cfg.GeminiModel)
 	overviewHandler := overview.NewHandler(overviewService)
 
 	port := cfg.Port
@@ -97,6 +140,13 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   cfg.CORSAllowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -113,12 +163,34 @@ func main() {
 		r.Handle("/forecast", forecastingHandler)
 		r.Route("/ai", func(r chi.Router) {
 			r.Handle("/recommendation", recommendationHandler)
+			r.Route("/ideas", func(r chi.Router) {
+				r.Get("/", ideasHandler.List)
+				r.Post("/run", ideasHandler.Run)
+				r.Patch("/{id}", ideasHandler.UpdateStatus)
+			})
 		})
+
+		r.Route("/menu-items", func(r chi.Router) {
+			r.Get("/active", menuItemsHandler.ListActive)
+		})
+
+		r.Route("/restaurant-profile", func(r chi.Router) {
+			r.Get("/", restaurantProfileHandler.Get)
+			r.Put("/", restaurantProfileHandler.Upsert)
+		})
+		r.Route("/trend-hashtags/suggestions", func(r chi.Router) {
+			r.Get("/", trendHashtagsHandler.List)
+			r.Post("/", trendHashtagsHandler.Generate)
+			r.Post("/manual", trendHashtagsHandler.SaveManual)
+			r.Patch("/{id}", trendHashtagsHandler.UpdateStatus)
+		})
+		r.Get("/trend-ingest/status", trendIngestHandler.Status)
 
 		r.Get("/v1/dashboard/summary", analyticsHandler.HandleSummary)
 		r.Get("/v1/dashboard/menu-items", analyticsHandler.HandleMenuItems)
 		r.Get("/v1/performance-dashboard", analyticsHandler.HandlePerformanceDashboard)
 		r.Get("/v1/overview", overviewHandler.HandleGetOverview)
+		r.Get("/v1/trend-videos", trendVideosHandler.List)
 		r.Get("/reviews", analyticsHandler.ServeGoogleReviewHTTP)
 		r.Get("/clover", analyticsHandler.ServeCloverOrdersHTTP)
 	})

@@ -30,7 +30,7 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>
-          <TooltipProvider>
+          <TooltipProvider delayDuration={200}>
             <SidebarProvider
               style={
                 {
